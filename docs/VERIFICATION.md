@@ -51,4 +51,4 @@ Production preview reloaded successfully under Chromium offline network emulatio
 
 Navy/minimalist update: all 10 unit tests and the complete browser smoke test passed. Deck and Practice labels were removed while accessible card names remain. The Ace of Spades has no promotional text or QR overlay. Inspected mobile screenshots and fixed delayed gallery scroll events after navigation. No runtime errors occurred in the final check.
 
-Deckwise install icon: cobalt spade mark from the Deckwise header, exported to SVG, 192 px, 512 px, maskable 512 px, and Apple 180 px assets.
+Deckwise install icon: inset 5:7 King of Hearts face from the deck artwork, on the cobalt navy app background, exported as SVG, 192 px, 512 px, maskable 512 px, and Apple 180 px assets. Card source: [Adrian Kennard’s CC0 playing cards](https://github.com/letele/playing-cards).
