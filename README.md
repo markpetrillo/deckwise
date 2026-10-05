@@ -56,3 +56,5 @@ Deck → Sequence quiz drills the next or previous card with five card choices. 
 Install assets use versioned filenames to avoid cached older icons; the app identity and local progress storage stay the same.
 
 Progress → Sequence quiz shows separate forward/backward personal bests and the last 20 completed runs with raw time, scored time, and accuracy. Existing countdown-based sequence sessions remain available as legacy history; they are excluded from full-deck records.
+
+Deck → Sequence quiz is the opening screen, with Browse second. Each run begins with an empty prompt: choose its starting position first (Four of Clubs for forward, Nine of Diamonds for backward), then the neighboring cards. Forward beginning runs end at the Nine of Diamonds after exactly 52 answers. Random starts also test the chosen start first and cover the deck once. The main menu orders Deck before Practice, and Progress opens on sequence results.

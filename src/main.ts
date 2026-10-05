@@ -39,12 +39,12 @@ try {
   storageProblem =
     "Saved progress could not be loaded. Export a backup before resetting. New practice is disabled to protect it.";
 }
-let view: "practice" | "deck" | "progress" | "settings" = "practice",
+let view: "practice" | "deck" | "progress" | "settings" = "deck",
   deckIndex = 0,
-  filter = "all",
+  filter = "sequence",
   period = "all",
   historyLimit = 12;
-let deckMode: "browse" | "quiz" = "browse";
+let deckMode: "browse" | "quiz" = "quiz";
 let sequenceDirection: SequenceDirection = "sequence-forward";
 let sequenceStart = "beginning";
 let sequenceSource = 1;
@@ -113,8 +113,8 @@ for (const s of data.sessions)
   }
 function chrome(body: string) {
   app.innerHTML = `<div class="shell"><header class="header"><a href="#" class="brand" data-action="home"><img class="brand-mark" src="/brand-mark.svg" alt="" width="28" height="40"/>deckwise<span class="brand-dot">.</span></a><span class="stack-label">MNEMONICA · 52 CARDS</span><button class="icon-button" data-action="settings" aria-label="Settings">${uiIcon("settings")}</button></header>${storageProblem ? `<div class="warning" role="alert">${esc(storageProblem)} <button data-action="export">Export backup</button></div>` : ""}<main>${body}</main><nav class="nav" aria-label="Main navigation">${[
-    ["practice", "Practice", "◎"],
     ["deck", "Deck", "♧"],
+    ["practice", "Practice", "◎"],
     ["progress", "Progress", "▥"],
     ["settings", "Settings", "⚙"],
   ]
@@ -164,7 +164,7 @@ function practice() {
         ? ""
         : "";
   chrome(
-    `<section class="session-top"><div><span class="eyebrow">${modeName(q.direction)}</span>${isSequence(q.direction) ? `<span class="sequence-position">${stats.total - (data.attempts.some(a => a.id === q!.id) ? 1 : 0) + 1} / 52</span>` : ""}</div><div class="session-controls"><button class="session-timer" data-action="pause" aria-label="${paused ? "Resume" : "Pause"} practice"><span id="remaining">${active.runTarget ? runTime(sessionElapsed) : timer(active.duration - sessionElapsed)}</span><span>${paused ? "▶ Resume" : "Ⅱ Pause"}</span></button><button class="text-button end-session" data-action="finish">End session</button></div></section><div class="session-progress"><span id="session-bar" style="width:${active.runTarget ? data.attempts.filter(a => a.sessionId === active!.id && (a.id !== q?.id || q.done)).length / active.runTarget * 100 : Math.min(100, (sessionElapsed / active.duration) * 100)}%"></span></div><div class="question-stage ${paused ? "paused" : ""}"><div class="prompt-card">${isSequence(q.direction) ? cardImage(sequenceSource) : q.direction === "card-number" ? cardImage(q.position) : numberCard(q.position)}</div></div><div class="feedback ${q.done ? "positive" : q.wrong ? "negative" : ""}" role="status" aria-live="polite">${paused ? "Paused" : result}</div><div class="answers" aria-label="Answer choices">${q.options.map((p, i) => `<button class="answer ${q!.selected.includes(p) && p !== q!.position ? "wrong" : ""} ${q!.done && p === q!.position ? "correct" : ""}" data-answer="${p}" aria-label="${q!.direction === "card-number" ? `Position ${p}` : cardName(p)}" ${paused || q!.done || q!.selected.includes(p) ? "disabled" : ""}>${q!.direction === "card-number" ? numberCard(p) : cardImage(p)}<span class="key-label">${i + 1}</span></button>`).join("")}</div><div class="practice-actions">${q.done ? q.revealed ? `<button class="primary next" data-action="next" ${paused ? "disabled" : ""}>Next card <span>→</span></button>` : `<span class="next-status">${paused ? "Resume to continue" : "Next card…"}</span>` : `${isSequence(q.direction) ? "" : `<button class="text-button" data-action="hint" ${paused ? "disabled" : ""}>☼ Neighbor hint</button>`}<button class="text-button" data-action="reveal" ${paused ? "disabled" : ""}>Reveal answer</button>`}</div>${q.hint && !q.done ? `<div class="hint-panel">${q.position > 1 ? `<div><span>Before</span>${cardImage(q.position - 1)}</div>` : "<span>Top of deck</span>"}${q.position < 52 ? `<div><span>After</span>${cardImage(q.position + 1)}</div>` : "<span>Bottom of deck</span>"}</div>` : ""}<div class="session-bottom"><span>${stats.total} answered · ${active.runTarget ? sequenceResult(active, data.attempts).accuracy.toFixed(0) + "% first try" : (stats.eligibleTotal ? stats.accuracy.toFixed(0) + "%" : "—") + " independent"}</span></div>`,
+    `<section class="session-top"><div><span class="eyebrow">${isSequence(q.direction) && sequenceSource === 0 ? sequenceStart === "random" ? `Choose position ${q.position}` : q.direction === "sequence-forward" ? "Choose the first card" : "Choose the last card" : modeName(q.direction)}</span>${isSequence(q.direction) ? `<span class="sequence-position">${stats.total - (data.attempts.some(a => a.id === q!.id) ? 1 : 0) + 1} / 52</span>` : ""}</div><div class="session-controls"><button class="session-timer" data-action="pause" aria-label="${paused ? "Resume" : "Pause"} practice"><span id="remaining">${active.runTarget ? runTime(sessionElapsed) : timer(active.duration - sessionElapsed)}</span><span>${paused ? "▶ Resume" : "Ⅱ Pause"}</span></button><button class="text-button end-session" data-action="finish">End session</button></div></section><div class="session-progress"><span id="session-bar" style="width:${active.runTarget ? data.attempts.filter(a => a.sessionId === active!.id && (a.id !== q?.id || q.done)).length / active.runTarget * 100 : Math.min(100, (sessionElapsed / active.duration) * 100)}%"></span></div><div class="question-stage ${paused ? "paused" : ""}"><div class="prompt-card">${isSequence(q.direction) ? sequenceSource === 0 ? "" : cardImage(sequenceSource) : q.direction === "card-number" ? cardImage(q.position) : numberCard(q.position)}</div></div><div class="feedback ${q.done ? "positive" : q.wrong ? "negative" : ""}" role="status" aria-live="polite">${paused ? "Paused" : result}</div><div class="answers" aria-label="Answer choices">${q.options.map((p, i) => `<button class="answer ${q!.selected.includes(p) && p !== q!.position ? "wrong" : ""} ${q!.done && p === q!.position ? "correct" : ""}" data-answer="${p}" aria-label="${q!.direction === "card-number" ? `Position ${p}` : cardName(p)}" ${paused || q!.done || q!.selected.includes(p) ? "disabled" : ""}>${q!.direction === "card-number" ? numberCard(p) : cardImage(p)}<span class="key-label">${i + 1}</span></button>`).join("")}</div><div class="practice-actions">${q.done ? q.revealed ? `<button class="primary next" data-action="next" ${paused ? "disabled" : ""}>Next card <span>→</span></button>` : `<span class="next-status">${paused ? "Resume to continue" : "Next card…"}</span>` : `${isSequence(q.direction) ? "" : `<button class="text-button" data-action="hint" ${paused ? "disabled" : ""}>☼ Neighbor hint</button>`}<button class="text-button" data-action="reveal" ${paused ? "disabled" : ""}>Reveal answer</button>`}</div>${q.hint && !q.done ? `<div class="hint-panel">${q.position > 1 ? `<div><span>Before</span>${cardImage(q.position - 1)}</div>` : "<span>Top of deck</span>"}${q.position < 52 ? `<div><span>After</span>${cardImage(q.position + 1)}</div>` : "<span>Bottom of deck</span>"}</div>` : ""}<div class="session-bottom"><span>${stats.total} answered · ${active.runTarget ? sequenceResult(active, data.attempts).accuracy.toFixed(0) + "% first try" : (stats.eligibleTotal ? stats.accuracy.toFixed(0) + "%" : "—") + " independent"}</span></div>`,
   );
 }
 function newQuestion() {
@@ -176,7 +176,7 @@ function newQuestion() {
         ? "card-number"
         : "number-card"
       : data.settings.mode;
-  const position = isSequence(direction) ? sequenceNeighbor(sequenceSource, direction as SequenceDirection) : choose(data, direction, recent);
+  const position = isSequence(direction) ? sequenceSource === 0 ? active!.startPosition! : sequenceNeighbor(sequenceSource, direction as SequenceDirection) : choose(data, direction, recent);
   const exposed =
     recent.includes(position) ||
     Date.now() - (lastExposure.get(position) ?? 0) < 60000;
@@ -202,10 +202,11 @@ function newQuestion() {
 }
 function startSequence() {
   if (storageProblem) return;
-  sequenceSource = sequenceStart === "random" ? 1 + Math.floor(Math.random() * 52) : sequenceDirection === "sequence-forward" ? 1 : 52;
-  start(sequenceDirection);
+  const startPosition = sequenceStart === "random" ? 1 + Math.floor(Math.random() * 52) : sequenceDirection === "sequence-forward" ? 1 : 52;
+  sequenceSource = 0;
+  start(sequenceDirection, startPosition);
 }
-function start(mode: Mode = data.settings.mode) {
+function start(mode: Mode = data.settings.mode, startPosition = 1) {
   if (storageProblem) return;
   active = {
     id: crypto.randomUUID(),
@@ -213,10 +214,11 @@ function start(mode: Mode = data.settings.mode) {
     endedAt: null,
     mode,
     duration: isSequence(mode) ? 0 : data.settings.minutes * 60000,
-    ...(isSequence(mode) ? {runTarget:52, startPosition:sequenceSource, elapsedMs:0, completed:false} : {}),
+    ...(isSequence(mode) ? {runTarget:52, startPosition, elapsedMs:0, completed:false} : {}),
   };
   data.sessions.push(active);
   sessionElapsed = 0;
+  q = null;
   recent = [];
   paused = false;
   save();
@@ -360,7 +362,7 @@ window.addEventListener("storage", (e) => {
   render();
 });
 function deckTabs() {
-  return `<div class="segmented deck-tabs" aria-label="Deck mode"><button data-deck-mode="browse" class="${deckMode === "browse" ? "selected" : ""}" aria-pressed="${deckMode === "browse"}">Browse</button><button data-deck-mode="quiz" class="${deckMode === "quiz" ? "selected" : ""}" aria-pressed="${deckMode === "quiz"}">Sequence quiz</button></div>`;
+  return `<div class="segmented deck-tabs" aria-label="Deck mode"><button data-deck-mode="quiz" class="${deckMode === "quiz" ? "selected" : ""}" aria-pressed="${deckMode === "quiz"}">Sequence quiz</button><button data-deck-mode="browse" class="${deckMode === "browse" ? "selected" : ""}" aria-pressed="${deckMode === "browse"}">Browse</button></div>`;
 }
 function deck() {
   if (deckMode === "quiz") {
@@ -502,7 +504,7 @@ function progress() {
     .filter(session => (filter === "all" ? !isSequence(session.mode) : filter === "sequence" ? isSequence(session.mode) : session.mode === filter || (!isSequence(filter) && session.mode === "mixed")) &&
       (period === "all" || session.startedAt >= Date.now() - Number(period) * 86400000));
   chrome(
-    `<section class="page-heading"><h1>Progress</h1></section><div class="filters"><label>Direction<select id="stats-direction"><option value="all" ${filter === "all" ? "selected" : ""}>Position practice</option><option value="sequence" ${filter === "sequence" ? "selected" : ""}>Sequence quiz</option><option value="sequence-forward" ${filter === "sequence-forward" ? "selected" : ""}>Sequence · forward</option><option value="sequence-backward" ${filter === "sequence-backward" ? "selected" : ""}>Sequence · backward</option><option value="card-number" ${filter === "card-number" ? "selected" : ""}>Card → number</option><option value="number-card" ${filter === "number-card" ? "selected" : ""}>Number → card</option></select></label><label>Period<select id="stats-period">${[
+    `<section class="page-heading"><h1>Progress</h1></section><div class="filters"><label>Direction<select id="stats-direction"><option value="sequence" ${filter === "sequence" ? "selected" : ""}>Sequence quiz</option><option value="all" ${filter === "all" ? "selected" : ""}>Position practice</option><option value="sequence-forward" ${filter === "sequence-forward" ? "selected" : ""}>Sequence · forward</option><option value="sequence-backward" ${filter === "sequence-backward" ? "selected" : ""}>Sequence · backward</option><option value="card-number" ${filter === "card-number" ? "selected" : ""}>Card → number</option><option value="number-card" ${filter === "number-card" ? "selected" : ""}>Number → card</option></select></label><label>Period<select id="stats-period">${[
       ["all", "All time"],
       ["7", "Last 7 days"],
       ["30", "Last 30 days"],
@@ -513,7 +515,7 @@ function progress() {
       )
       .join(
         "",
-      )}</select></label></div><div class="summary-grid stat-cards"><div><strong>${s.eligibleTotal ? s.accuracy.toFixed(0) + "%" : "—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median correct answer</span></div><div><strong>${s.total}</strong><span>Questions answered</span></div><div><strong>${slow.length ? Math.round((within / slow.length) * 100) + "%" : "—"}</strong><span>Within ${data.settings.speedTarget}s target</span></div></div>${!s.total ? '<div class="empty"><span>♧</span><h2>No practice results</h2><p>Practice results will appear here, with each direction tracked separately.</p><button class="primary" data-action="home">Go to practice →</button></div>' : `${filter.startsWith("sequence") ? sequenceTrend() : trend(attempts)}<div class="report-notes"><span>${s.wrong} first-answer misses</span><span>${s.hints} questions with hints</span><span>${new Set(attempts.map((a) => a.position)).size}/52 cards practiced</span></div>`}${filter.startsWith("sequence") ? sequenceBests() : ""}<section class="report-section"><div class="chart-title"><h2>Per-card results</h2><span>Tap a card for details</span></div><p class="muted compact">${filter === "all" ? "Results combine both directions. Filter above to find a directional weakness." : filter === "sequence" ? "Forward and backward sequence results." : modeName(filter as Direction)} Timing excludes interrupted and recently exposed answers.</p><div class="table-wrap"><table class="deck-table"><thead><tr><th>Position / card</th><th>Answers</th><th>Accuracy</th><th>Median</th></tr></thead><tbody>${STACK.map(
+      )}</select></label></div><div class="summary-grid stat-cards"><div><strong>${s.eligibleTotal ? s.accuracy.toFixed(0) + "%" : "—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median correct answer</span></div><div><strong>${s.total}</strong><span>Questions answered</span></div><div><strong>${slow.length ? Math.round((within / slow.length) * 100) + "%" : "—"}</strong><span>Within ${data.settings.speedTarget}s target</span></div></div>${!s.total ? '<div class="empty"><span>♧</span><h2>No practice results</h2><p>Practice results will appear here, with each direction tracked separately.</p><button class="primary" data-view="practice">Go to practice →</button></div>' : `${filter.startsWith("sequence") ? sequenceTrend() : trend(attempts)}<div class="report-notes"><span>${s.wrong} first-answer misses</span><span>${s.hints} questions with hints</span><span>${new Set(attempts.map((a) => a.position)).size}/52 cards practiced</span></div>`}${filter.startsWith("sequence") ? sequenceBests() : ""}<section class="report-section"><div class="chart-title"><h2>Per-card results</h2><span>Tap a card for details</span></div><p class="muted compact">${filter === "all" ? "Results combine both directions. Filter above to find a directional weakness." : filter === "sequence" ? "Forward and backward sequence results." : modeName(filter as Direction)} Timing excludes interrupted and recently exposed answers.</p><div class="table-wrap"><table class="deck-table"><thead><tr><th>Position / card</th><th>Answers</th><th>Accuracy</th><th>Median</th></tr></thead><tbody>${STACK.map(
       (_, i) => {
         const ss = summary(attempts.filter((a) => a.position === i + 1));
         return `<tr><td><button class="card-detail" data-position="${i + 1}"><span class="position-number">${i + 1}</span><span>${cardName(i + 1)}</span></button></td><td>${ss.total || "—"}</td><td><span class="accuracy ${ss.eligibleTotal && ss.accuracy < 75 ? "low" : ""}">${ss.eligibleTotal ? ss.accuracy.toFixed(0) + "%" : "—"}</span></td><td>${fmtTime(ss.medianMs)}</td></tr>`;
@@ -680,7 +682,7 @@ function bind(root: ParentNode = app) {
     b.onclick = () => confirmDeleteSession(b.dataset.confirmDelete!));
   root
     .querySelectorAll<HTMLElement>("[data-view]")
-    .forEach((b) => (b.onclick = () => route(b.dataset.view as typeof view)));
+    .forEach((b) => (b.onclick = () => { if (b.dataset.view === "progress") filter = "sequence"; route(b.dataset.view as typeof view); }));
   root.querySelectorAll<HTMLElement>("[data-mode]").forEach(
     (b) =>
       (b.onclick = () => {
@@ -713,7 +715,7 @@ function bind(root: ParentNode = app) {
             document.querySelector<HTMLDialogElement>("dialog")?.close();
             break;
           case "home":
-            route("practice");
+            route("deck");
             break;
           case "settings":
             route("settings");

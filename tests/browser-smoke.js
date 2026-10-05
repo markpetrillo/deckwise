@@ -16,7 +16,7 @@
   if (document.querySelector('[data-action="finish"]'))
     click('[data-action="finish"]');
   document.querySelector("dialog")?.close();
-  click('[data-action="home"]');
+  click('[data-view="practice"]');
   click('[data-mode="card-number"]');
   click('[data-action="start"]');
   const expected =
@@ -110,7 +110,7 @@
     "52-card report",
   );
   results.push("session and per-card reporting");
-  click('[data-action="home"]');
+  click('[data-view="practice"]');
   click('[data-mode="number-card"]');
   click('[data-action="start"]');
   const position = Number(
@@ -140,6 +140,7 @@
   click('[data-action="finish"]');
   document.querySelector("dialog").close();
   click('[data-view="deck"]');
+  click('[data-deck-mode="browse"]');
   assert(
     document.querySelectorAll(".gallery-slide").length === 52,
     "Full gallery",
@@ -159,7 +160,7 @@
     "No horizontal page overflow",
   );
   assert(raw().attempts.length >= 5, "Attempts saved");
-  click('[data-action="home"]');
+  click('[data-view="practice"]');
   click('[data-action="start"]');
   click('[data-action="pause"]');
   const pausedTime = document.querySelector('#remaining').textContent;
@@ -171,6 +172,28 @@
   assert(JSON.stringify(raw().memory) === JSON.stringify(beforeEnd.memory), 'Early end preserves learning state');
   document.querySelector('dialog').close();
   results.push('frozen pause and unanswered early finish');
+  click('[data-view="deck"]');
+  click('[data-deck-mode="quiz"]');
+  click('[data-sequence-direction="sequence-forward"]');
+  document.querySelector('#sequence-start').value = 'beginning';
+  document.querySelector('#sequence-start').dispatchEvent(new Event('change'));
+  click('[data-action="start-sequence"]');
+  assert(!document.querySelector('.prompt-card img'), 'Sequence starts blank');
+  for (let position = 1; position <= 52; position++) {
+    assert(document.querySelector(`[data-answer="${position}"]`), 'Starting/card position offered');
+    click(`[data-answer="${position}"]`);
+    if (position < 52) {
+      assert(document.querySelector('.prompt-card img').alt === `${ranks[expected[position-1][0]]} of ${suits[expected[position-1][1]]}`, 'Immediate sequential prompt');
+    }
+  }
+  const fullRun = raw().sessions.at(-1);
+  const runAnswers = raw().attempts.filter(a => a.sessionId === fullRun.id);
+  assert(fullRun.completed && runAnswers.length === 52 && runAnswers.at(-1).position === 52, 'Run ends on Nine of Diamonds');
+  assert(document.querySelector('dialog[open]') && !document.querySelector('[data-answer]'), 'Stops after final card');
+  click('[data-action="summary-progress"]');
+  assert(document.querySelector('#stats-direction').value === 'sequence', 'Sequence results default');
+  assert(document.querySelector('#stats-direction').options[0].value === 'sequence', 'Sequence filter first');
+  results.push('blank first prompt, first through final card, automatic completion, sequence progress default');
   return JSON.stringify({
     passed: results,
     attempts: raw().attempts.length,
