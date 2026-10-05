@@ -369,12 +369,12 @@ function deck() {
   });
   galleryObserver.observe(gallery);
 }
-function goDeck(index: number) {
+function goDeck(index: number, instant = false) {
   deckIndex = Math.max(0, Math.min(51, index));
   const gallery = document.querySelector<HTMLDivElement>(".gallery")!;
   gallery.scrollTo({
     left: gallery.clientWidth * deckIndex,
-    behavior: matchMedia("(prefers-reduced-motion: reduce)").matches
+    behavior: instant || matchMedia("(prefers-reduced-motion: reduce)").matches
       ? "instant"
       : "smooth",
   });
@@ -725,7 +725,7 @@ function bind(root: ParentNode = app) {
   root
     .querySelector<HTMLInputElement>("#jump")
     ?.addEventListener("input", (e) =>
-      goDeck(Number((e.target as HTMLInputElement).value) - 1),
+      goDeck(Number((e.target as HTMLInputElement).value) - 1, true),
     );
   root
     .querySelector<HTMLSelectElement>("#minutes")
