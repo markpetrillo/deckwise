@@ -50,3 +50,5 @@ All 10 unit tests pass, including all 52 local image files. Chromium at 390x844 
 Production preview reloaded successfully under Chromium offline network emulation, with all 52 card images available from the service-worker cache.
 
 Navy/minimalist update: all 10 unit tests and the complete browser smoke test passed. Deck and Practice labels were removed while accessible card names remain. The Ace of Spades has no promotional text or QR overlay. Inspected mobile screenshots and fixed delayed gallery scroll events after navigation. No runtime errors occurred in the final check.
+
+Deckwise install icon: custom layered Ace of Spades mark, exported to SVG, 192 px, 512 px, maskable 512 px, and Apple 180 px assets.
