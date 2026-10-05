@@ -8,6 +8,7 @@ import {
   choices,
   choose,
   record,
+  deleteSession,
   summary,
   validate,
   key,
@@ -18,6 +19,7 @@ import {
   type Session,
 } from "./core";
 import { cardImage, numberCard } from "./cards";
+import { uiIcon } from "./icons";
 const app = document.querySelector<HTMLDivElement>("#app")!;
 const STORE = "deckwise.v1";
 let storageProblem = "";
@@ -48,6 +50,7 @@ let q: {
   direction: Direction;
   options: number[];
   elapsed: number;
+  advanceElapsed: number;
   wrong: number;
   hint: boolean;
   revealed: boolean;
@@ -101,7 +104,7 @@ for (const s of data.sessions)
       s.startedAt;
   }
 function chrome(body: string) {
-  app.innerHTML = `<div class="shell"><header class="header"><a href="#" class="brand" data-action="home"><span class="brand-mark">♠</span>deckwise<span class="brand-dot">.</span></a><span class="stack-label">MNEMONICA · 52 CARDS</span><button class="icon-button" data-action="settings" aria-label="Settings">⚙</button></header>${storageProblem ? `<div class="warning" role="alert">${esc(storageProblem)} <button data-action="export">Export backup</button></div>` : ""}<main>${body}</main><nav class="nav" aria-label="Main navigation">${[
+  app.innerHTML = `<div class="shell"><header class="header"><a href="#" class="brand" data-action="home"><img class="brand-mark" src="/brand-mark.svg" alt="" width="28" height="40"/>deckwise<span class="brand-dot">.</span></a><span class="stack-label">MNEMONICA · 52 CARDS</span><button class="icon-button" data-action="settings" aria-label="Settings">${uiIcon("settings")}</button></header>${storageProblem ? `<div class="warning" role="alert">${esc(storageProblem)} <button data-action="export">Export backup</button></div>` : ""}<main>${body}</main><nav class="nav" aria-label="Main navigation">${[
     ["practice", "Practice", "◎"],
     ["deck", "Deck", "♧"],
     ["progress", "Progress", "▥"],
@@ -109,7 +112,7 @@ function chrome(body: string) {
   ]
     .map(
       ([id, label, icon]) =>
-        `<button data-view="${id}" class="${view === id ? "active" : ""}" ${view === id ? 'aria-current="page"' : ""}><span aria-hidden="true">${icon}</span>${label}</button>`,
+        `<button data-view="${id}" class="${view === id ? "active" : ""}" ${view === id ? 'aria-current="page"' : ""}>${uiIcon(id)}${label}</button>`,
     )
     .join("")}</nav></div>`;
   bind();
@@ -129,7 +132,7 @@ function practice() {
         (m) => m.due <= Date.now(),
       ).length;
     chrome(
-      `<section class="page-heading"><h1>Practice</h1></section><section class="start-panel"><div class="segmented" aria-label="Practice direction">${(["card-number", "number-card", "mixed"] as Mode[]).map((m) => `<button data-mode="${m}" aria-pressed="${data.settings.mode === m}" class="${data.settings.mode === m ? "selected" : ""}">${modeName(m)}</button>`).join("")}</div><button class="primary start" data-action="start" ${storageProblem ? "disabled" : ""}>Start ${data.settings.minutes}-minute session <span>↗</span></button><div class="start-note">${data.attempts.length ? `${due} associations due · Adaptive review` : "52 cards · 5 choices"}</div></section><div class="mini-stats"><div><strong>${s.eligibleTotal ? s.accuracy.toFixed(0) + "%" : "—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median correct answer</span></div><div><strong>${new Set(data.attempts.map((a) => a.position)).size}<small>/52</small></strong><span>Cards practiced</span></div></div>`,
+      `<section class="start-panel"><div class="segmented" aria-label="Practice direction">${(["card-number", "number-card", "mixed"] as Mode[]).map((m) => `<button data-mode="${m}" aria-pressed="${data.settings.mode === m}" class="${data.settings.mode === m ? "selected" : ""}">${modeName(m)}</button>`).join("")}</div><label class="session-length" for="minutes"><span>Session length</span><select id="minutes">${[1, 3, 5, 10].map(n => `<option value="${n}" ${data.settings.minutes === n ? "selected" : ""}>${n} minutes</option>`).join("")}</select></label><button class="primary start" data-action="start" ${storageProblem ? "disabled" : ""}>Start ${data.settings.minutes}-minute session <span>↗</span></button><div class="start-note">${data.attempts.length ? `${due} associations due · Adaptive review` : "52 cards · 5 choices"}</div></section><div class="mini-stats"><div><strong>${s.eligibleTotal ? s.accuracy.toFixed(0) + "%" : "—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median correct answer</span></div><div><strong>${new Set(data.attempts.map((a) => a.position)).size}<small>/52</small></strong><span>Cards practiced</span></div></div>`,
     );
     return;
   }
@@ -151,7 +154,7 @@ function practice() {
         ? ""
         : "";
   chrome(
-    `<section class="session-top"><div><span class="eyebrow">${modeName(q.direction)}</span><h1 class="small-heading">${paused ? "Practice paused" : "Practice"}</h1></div><div class="session-controls"><button class="session-timer" data-action="pause" aria-label="${paused ? "Resume" : "Pause"} practice"><span id="remaining">${timer(active.duration - sessionElapsed)}</span><span>${paused ? "▶ Resume" : "Ⅱ Pause"}</span></button><button class="text-button end-session" data-action="finish">End session</button></div></section><div class="session-progress"><span id="session-bar" style="width:${Math.min(100, (sessionElapsed / active.duration) * 100)}%"></span></div><div class="question-stage ${paused ? "paused" : ""}"><div class="prompt-card">${q.direction === "card-number" ? cardImage(q.position) : numberCard(q.position)}</div></div><div class="feedback ${q.done ? "positive" : q.wrong ? "negative" : ""}" role="status" aria-live="polite">${paused ? "Paused · interrupted answer timing is excluded." : result}</div><div class="answers" aria-label="Answer choices">${q.options.map((p, i) => `<button class="answer ${q!.selected.includes(p) && p !== q!.position ? "wrong" : ""} ${q!.done && p === q!.position ? "correct" : ""}" data-answer="${p}" aria-label="${q!.direction === "card-number" ? `Position ${p}` : cardName(p)}" ${paused || q!.done || q!.selected.includes(p) ? "disabled" : ""}>${q!.direction === "card-number" ? numberCard(p) : cardImage(p)}<span class="key-label">${i + 1}</span></button>`).join("")}</div><div class="practice-actions">${q.done ? `<button class="primary next" data-action="next" ${paused ? "disabled" : ""}>Next card <span>→</span></button>` : `<button class="text-button" data-action="hint" ${paused ? "disabled" : ""}>☼ Neighbor hint</button><button class="text-button" data-action="reveal" ${paused ? "disabled" : ""}>Reveal answer</button>`}</div>${q.hint && !q.done ? `<div class="hint-panel">${q.position > 1 ? `<div><span>Before</span>${cardImage(q.position - 1)}</div>` : "<span>Top of deck</span>"}${q.position < 52 ? `<div><span>After</span>${cardImage(q.position + 1)}</div>` : "<span>Bottom of deck</span>"}</div>` : ""}<div class="session-bottom"><span>${stats.total} answered · ${stats.eligibleTotal ? stats.accuracy.toFixed(0) + "%" : "—"} independent</span></div>`,
+    `<section class="session-top"><div><span class="eyebrow">${modeName(q.direction)}</span></div><div class="session-controls"><button class="session-timer" data-action="pause" aria-label="${paused ? "Resume" : "Pause"} practice"><span id="remaining">${timer(active.duration - sessionElapsed)}</span><span>${paused ? "▶ Resume" : "Ⅱ Pause"}</span></button><button class="text-button end-session" data-action="finish">End session</button></div></section><div class="session-progress"><span id="session-bar" style="width:${Math.min(100, (sessionElapsed / active.duration) * 100)}%"></span></div><div class="question-stage ${paused ? "paused" : ""}"><div class="prompt-card">${q.direction === "card-number" ? cardImage(q.position) : numberCard(q.position)}</div></div><div class="feedback ${q.done ? "positive" : q.wrong ? "negative" : ""}" role="status" aria-live="polite">${paused ? "Paused" : result}</div><div class="answers" aria-label="Answer choices">${q.options.map((p, i) => `<button class="answer ${q!.selected.includes(p) && p !== q!.position ? "wrong" : ""} ${q!.done && p === q!.position ? "correct" : ""}" data-answer="${p}" aria-label="${q!.direction === "card-number" ? `Position ${p}` : cardName(p)}" ${paused || q!.done || q!.selected.includes(p) ? "disabled" : ""}>${q!.direction === "card-number" ? numberCard(p) : cardImage(p)}<span class="key-label">${i + 1}</span></button>`).join("")}</div><div class="practice-actions">${q.done ? q.revealed ? `<button class="primary next" data-action="next" ${paused ? "disabled" : ""}>Next card <span>→</span></button>` : `<span class="next-status">${paused ? "Resume to continue" : "Next card…"}</span>` : `<button class="text-button" data-action="hint" ${paused ? "disabled" : ""}>☼ Neighbor hint</button><button class="text-button" data-action="reveal" ${paused ? "disabled" : ""}>Reveal answer</button>`}</div>${q.hint && !q.done ? `<div class="hint-panel">${q.position > 1 ? `<div><span>Before</span>${cardImage(q.position - 1)}</div>` : "<span>Top of deck</span>"}${q.position < 52 ? `<div><span>After</span>${cardImage(q.position + 1)}</div>` : "<span>Bottom of deck</span>"}</div>` : ""}<div class="session-bottom"><span>${stats.total} answered · ${stats.eligibleTotal ? stats.accuracy.toFixed(0) + "%" : "—"} independent</span></div>`,
   );
 }
 function newQuestion() {
@@ -172,6 +175,7 @@ function newQuestion() {
     direction,
     options: choices(position, direction),
     elapsed: 0,
+    advanceElapsed: 0,
     wrong: 0,
     hint: false,
     revealed: false,
@@ -286,6 +290,7 @@ function tick() {
     }
     sessionElapsed += delta;
     if (q && !q.done) q.elapsed += delta;
+    else if (q && !q.revealed) q.advanceElapsed += delta;
   }
 }
 setInterval(() => {
@@ -294,6 +299,9 @@ setInterval(() => {
   if (sessionElapsed >= active.duration) {
     finish();
     return;
+  }
+  if (!paused && !document.hidden && q?.done && !q.revealed && q.advanceElapsed >= 1100) {
+    newQuestion();
   }
   const remain = document.querySelector("#remaining"),
     bar = document.querySelector<HTMLElement>("#session-bar");
@@ -441,7 +449,8 @@ function progress() {
     ).length;
   const sessions = [...data.sessions]
     .reverse()
-    .filter((session) => attempts.some((a) => a.sessionId === session.id));
+    .filter(session => (filter === "all" || session.mode === filter || session.mode === "mixed") &&
+      (period === "all" || session.startedAt >= Date.now() - Number(period) * 86400000));
   chrome(
     `<section class="page-heading"><h1>Progress</h1></section><div class="filters"><label>Direction<select id="stats-direction"><option value="all">Both directions</option><option value="card-number" ${filter === "card-number" ? "selected" : ""}>Card → number</option><option value="number-card" ${filter === "number-card" ? "selected" : ""}>Number → card</option></select></label><label>Period<select id="stats-period">${[
       ["all", "All time"],
@@ -457,7 +466,7 @@ function progress() {
       )}</select></label></div><div class="summary-grid stat-cards"><div><strong>${s.eligibleTotal ? s.accuracy.toFixed(0) + "%" : "—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median correct answer</span></div><div><strong>${s.total}</strong><span>Questions answered</span></div><div><strong>${slow.length ? Math.round((within / slow.length) * 100) + "%" : "—"}</strong><span>Within ${data.settings.speedTarget}s target</span></div></div>${!s.total ? '<div class="empty"><span>♧</span><h2>No practice results</h2><p>Practice results will appear here, with each direction tracked separately.</p><button class="primary" data-action="home">Go to practice →</button></div>' : `${trend(attempts)}<div class="report-notes"><span>${s.wrong} first-answer misses</span><span>${s.hints} questions with hints</span><span>${new Set(attempts.map((a) => a.position)).size}/52 cards practiced</span></div>`}<section class="report-section"><div class="chart-title"><h2>Per-card results</h2><span>Tap a card for details</span></div><p class="muted compact">${filter === "all" ? "Results combine both directions. Filter above to find a directional weakness." : modeName(filter as Direction)} Timing excludes interrupted and recently exposed answers.</p><div class="table-wrap"><table class="deck-table"><thead><tr><th>Position / card</th><th>Answers</th><th>Accuracy</th><th>Median</th></tr></thead><tbody>${STACK.map(
       (_, i) => {
         const ss = summary(attempts.filter((a) => a.position === i + 1));
-        return `<tr><td><button class="card-detail" data-position="${i + 1}"><span class="position-number">${i + 1}</span><span>${cardName(i + 1)}</span></button></td><td>${ss.total || "—"}</td><td><span class="accuracy ${ss.eligibleTotal && ss.accuracy < 75 ? "low" : ""}">${ss.total ? ss.accuracy.toFixed(0) + "%" : "—"}</span></td><td>${fmtTime(ss.medianMs)}</td></tr>`;
+        return `<tr><td><button class="card-detail" data-position="${i + 1}"><span class="position-number">${i + 1}</span><span>${cardName(i + 1)}</span></button></td><td>${ss.total || "—"}</td><td><span class="accuracy ${ss.eligibleTotal && ss.accuracy < 75 ? "low" : ""}">${ss.eligibleTotal ? ss.accuracy.toFixed(0) + "%" : "—"}</span></td><td>${fmtTime(ss.medianMs)}</td></tr>`;
       },
     ).join(
       "",
@@ -469,14 +478,36 @@ function progress() {
               const ss = summary(
                 attempts.filter((a) => a.sessionId === session.id),
               );
-              return `<button class="history-row" data-session="${esc(session.id)}"><div><strong>${fmtDate(session.startedAt)} · ${new Date(session.startedAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}</strong><span>${modeName(session.mode)} · ${ss.total} answered</span></div><div><strong>${ss.accuracy.toFixed(0)}%</strong><span>${fmtTime(ss.medianMs)}</span></div></button>`;
+              return `<div class="history-entry"><button class="history-row" data-session="${esc(session.id)}"><div><strong>${fmtDate(session.startedAt)} · ${new Date(session.startedAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}</strong><span>${modeName(session.mode)} · ${ss.total} answered</span></div><div><strong>${ss.eligibleTotal ? ss.accuracy.toFixed(0) + "%" : "—"}</strong><span>${fmtTime(ss.medianMs)}</span></div></button><button class="delete-session" data-delete-session="${esc(session.id)}" aria-label="Delete session from ${esc(fmtDate(session.startedAt))}">${uiIcon("trash")}</button></div>`;
             })
             .join(
               "",
             )}</div>${sessions.length > historyLimit ? '<button class="text-button" data-action="more-history">Show more sessions</button>' : ""}`
-        : '<p class="muted">No answered sessions in this period yet.</p>'
+        : '<p class="muted">No sessions in this period.</p>'
     }</section><div class="export-row"><button class="text-button" data-action="export">↓ Export backup</button><button class="text-button" data-action="csv">↓ Export results CSV</button></div><p class="footnote">Independent accuracy excludes recent exposure; hints and reveals count as failures. Timing also excludes interruptions. Multiple choice measures recognition; fast guesses can still be correct.</p>`,
   );
+}
+function requestDeleteSession(id: string) {
+  const session = data.sessions.find(s => s.id === id);
+  if (!session || active || storageProblem) return;
+  const count = data.attempts.filter(a => a.sessionId === id).length;
+  showDialog(`<h2>Delete session?</h2><p>${esc(fmtDate(session.startedAt))} · ${count} answers</p><p>This removes its answers from all reports and rebuilds the review schedule from the remaining history.</p><div class="dialog-actions"><button class="secondary" data-action="close-dialog">Cancel</button><button class="primary delete-confirm" data-confirm-delete="${esc(id)}">Delete session</button></div>`);
+}
+function confirmDeleteSession(id: string) {
+  if (active || storageConflict || storageProblem) return;
+  const old = data;
+  const candidate = validate(JSON.parse(JSON.stringify(data)));
+  if (!deleteSession(candidate, id)) return;
+  data = candidate;
+  if (!save()) {
+    data = old;
+    showDialog('<h2>Session not deleted</h2><p>Storage could not be updated. Your history was retained.</p>');
+    return;
+  }
+  recent = [];
+  lastExposure.clear();
+  document.querySelector<HTMLDialogElement>('dialog')?.close();
+  render();
 }
 function detail(position: number) {
   const attempts = filtered().filter((a) => a.position === position);
@@ -487,7 +518,7 @@ function detail(position: number) {
       .map((dir) => {
         const ss = summary(attempts.filter((a) => a.direction === dir)),
           m = data.memory[key(position, dir)];
-        return `<div class="detail-direction"><h3>${modeName(dir)}</h3><p>${ss.total} answers · ${ss.total ? ss.accuracy.toFixed(0) + "%" : "—"} independent · ${fmtTime(ss.medianMs)} median</p><p class="muted">${m ? `Next review: ${m.due <= Date.now() ? "due now" : new Date(m.due).toLocaleString()}` : "Not practiced yet"}</p></div>`;
+        return `<div class="detail-direction"><h3>${modeName(dir)}</h3><p>${ss.total} answers · ${ss.eligibleTotal ? ss.accuracy.toFixed(0) + "%" : "—"} independent · ${fmtTime(ss.medianMs)} median</p><p class="muted">${m ? `Next review: ${m.due <= Date.now() ? "due now" : new Date(m.due).toLocaleString()}` : "Not practiced yet"}</p></div>`;
       })
       .join(
         "",
@@ -499,7 +530,7 @@ function attemptList(attempts: Attempt[]) {
 }
 function settings() {
   chrome(
-    `<section class="page-heading"><h1>Settings</h1></section><section class="settings-panel"><label>Session length<select id="minutes">${[1, 3, 5, 10].map((n) => `<option value="${n}" ${data.settings.minutes === n ? "selected" : ""}>${n} minutes</option>`).join("")}</select></label><label>Speed target<select id="speed">${[2, 3, 5, 8, 10].map((n) => `<option value="${n}" ${data.settings.speedTarget === n ? "selected" : ""}>${n} seconds</option>`).join("")}</select></label><label class="toggle-row"><span>Use speed to adapt practice<small>Slower correct associations get extra practice.</small></span><input id="adaptive-speed" type="checkbox" ${data.settings.speedAdaptive ? "checked" : ""}/></label><p class="muted">Accuracy drives your review schedule. Timing is compared within each direction and adapts gently after enough practice.</p></section><section class="settings-panel"><h2>Data</h2><p>Saved in this browser on this device. No account, tracking, or cloud sync. Clearing browser data removes your history.</p><button class="primary" data-action="export">Export a backup ↓</button><label class="file-label">Restore from a backup<input type="file" id="import" accept="application/json,.json"/></label><p class="muted">Restore replaces this device’s progress after confirmation.</p></section><section class="settings-panel"><h2>Install Deckwise</h2><p>Install for standalone and offline use.</p><button class="primary" data-action="install">${installPrompt ? "Install app ↗" : "How to install ↗"}</button><p id="offline-status" class="muted">${navigator.onLine ? "Online" : "Offline"} · ${navigator.serviceWorker?.controller ? "Offline app ready" : "Offline setup available on the published site"}</p></section><section class="settings-panel"><h2>Reset</h2><button class="text-button danger" data-action="reset">Reset all progress</button></section><p class="footnote">Independent practice companion for Juan Tamariz’s Mnemonica. Deckwise v0.2 · <a href="https://www.me.uk/cards/" target="_blank" rel="noopener">Card artwork: Adrian Kennard (CC0)</a>.</p>`,
+    `<section class="page-heading"><h1>Settings</h1></section><section class="settings-panel"><label>Session length<select id="minutes">${[1, 3, 5, 10].map((n) => `<option value="${n}" ${data.settings.minutes === n ? "selected" : ""}>${n} minutes</option>`).join("")}</select></label><label>Speed target<select id="speed">${[2, 3, 5, 8, 10].map((n) => `<option value="${n}" ${data.settings.speedTarget === n ? "selected" : ""}>${n} seconds</option>`).join("")}</select></label><label class="toggle-row"><span>Use speed to adapt practice<small>Slower correct associations get extra practice.</small></span><input id="adaptive-speed" type="checkbox" ${data.settings.speedAdaptive ? "checked" : ""}/></label><p class="muted">Accuracy drives your review schedule. Timing is compared within each direction and adapts gently after enough practice.</p></section><section class="settings-panel"><h2>Data</h2><p>Saved in this browser on this device. No account, tracking, or cloud sync. Clearing browser data removes your history.</p><button class="primary" data-action="export">Export a backup ↓</button><label class="file-label">Restore from a backup<input type="file" id="import" accept="application/json,.json"/></label><p class="muted">Restore replaces this device’s progress after confirmation.</p></section><section class="settings-panel"><h2>Install Deckwise</h2><p>Install for standalone and offline use.</p><button class="primary" data-action="install">${installPrompt ? "Install app ↗" : "How to install ↗"}</button><p id="offline-status" class="muted">${navigator.onLine ? "Online" : "Offline"} · ${navigator.serviceWorker?.controller ? "Offline app ready" : "Offline setup available on the published site"}</p></section><section class="settings-panel"><h2>Reset</h2><button class="text-button danger" data-action="reset">Reset all progress</button></section><p class="footnote">Independent practice companion for Juan Tamariz’s Mnemonica. Deckwise v0.3 · <a href="https://www.me.uk/cards/" target="_blank" rel="noopener">Card artwork: Adrian Kennard (CC0)</a>.</p>`,
   );
 }
 function download(name: string, content: string, type: string) {
@@ -589,6 +620,10 @@ function route(next: typeof view) {
   window.scrollTo(0, 0);
 }
 function bind(root: ParentNode = app) {
+  root.querySelectorAll<HTMLElement>('[data-delete-session]').forEach(b =>
+    b.onclick = () => requestDeleteSession(b.dataset.deleteSession!));
+  root.querySelectorAll<HTMLElement>('[data-confirm-delete]').forEach(b =>
+    b.onclick = () => confirmDeleteSession(b.dataset.confirmDelete!));
   root
     .querySelectorAll<HTMLElement>("[data-view]")
     .forEach((b) => (b.onclick = () => route(b.dataset.view as typeof view)));
@@ -611,7 +646,7 @@ function bind(root: ParentNode = app) {
       (b.onclick = () => {
         const session = data.sessions.find((s) => s.id === b.dataset.session)!;
         showDialog(
-          `<div class="eyebrow">${fmtDate(session.startedAt)}</div><h2>${modeName(session.mode)}</h2>${attemptList(data.attempts.filter((a) => a.sessionId === session.id).reverse())}`,
+          `<div class="eyebrow">${fmtDate(session.startedAt)}</div><h2>${modeName(session.mode)}</h2>${attemptList(data.attempts.filter((a) => a.sessionId === session.id).reverse())}<button class="text-button danger" data-delete-session="${esc(session.id)}">Delete session</button>`,
         );
       }),
   );
@@ -620,6 +655,9 @@ function bind(root: ParentNode = app) {
       (b.onclick = (e) => {
         e.preventDefault();
         switch (b.dataset.action) {
+          case "close-dialog":
+            document.querySelector<HTMLDialogElement>("dialog")?.close();
+            break;
           case "home":
             route("practice");
             break;
@@ -732,6 +770,7 @@ function bind(root: ParentNode = app) {
     ?.addEventListener("change", (e) => {
       data.settings.minutes = Number((e.target as HTMLSelectElement).value);
       save();
+      render();
     });
   root
     .querySelector<HTMLSelectElement>("#speed")

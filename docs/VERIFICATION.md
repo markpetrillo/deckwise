@@ -51,4 +51,8 @@ Production preview reloaded successfully under Chromium offline network emulatio
 
 Navy/minimalist update: all 10 unit tests and the complete browser smoke test passed. Deck and Practice labels were removed while accessible card names remain. The Ace of Spades has no promotional text or QR overlay. Inspected mobile screenshots and fixed delayed gallery scroll events after navigation. No runtime errors occurred in the final check.
 
-Deckwise install icon: inset 5:7 King of Hearts face from the deck artwork, on the cobalt navy app background, exported as SVG, 192 px, 512 px, maskable 512 px, and Apple 180 px assets. Card source: [Adrian Kennard’s CC0 playing cards](https://github.com/letele/playing-cards).
+Deckwise install icon: cobalt spade mark in a 5:7 playing-card silhouette, matching the header logo. SVG, 192 px, 512 px, maskable 512 px, and Apple 180 px assets.
+
+## Practice and UI polish (October 5, 2026)
+
+All 12 core tests pass, including session deletion compared with a clean history replay and protection of active sessions. Updated browser smoke tests pass in an isolated Chromium context. Focused checks verified fixed answer coordinates before feedback, after reveal, after correct answers, and after automatic advancement; a paused transition remains frozen; revealed answers require manual continuation. Session deletion cancel, confirm, attempt removal, and persistence after reload passed. Mobile 390x844 and compact 320x667 layouts, gallery, settings, progress, and the portrait icon were inspected; no runtime errors or horizontal overflow occurred. Correct answers advance after 1.1 seconds of active foreground time. Empty completed sessions can also be deleted.

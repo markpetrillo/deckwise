@@ -48,4 +48,6 @@ Mnemonica was created by Juan Tamariz. This is an independent practice companion
 
 Personal interface: navy palette, minimal deck/practice labels, and a clean Ace of Spades without the source artwork’s promotional QR/text. CC0 attribution and license remain in Settings and the repository.
 
-Deckwise install icon: inset 5:7 King of Hearts face from the deck artwork, on the cobalt navy app background, exported as SVG, 192 px, 512 px, maskable 512 px, and Apple 180 px assets. Card source: [Adrian Kennard’s CC0 playing cards](https://github.com/letele/playing-cards).
+Deckwise install icon: cobalt spade mark in a 5:7 playing-card silhouette, matching the header logo. SVG, 192 px, 512 px, maskable 512 px, and Apple 180 px assets.
+
+Correct answers automatically advance after a brief feedback interval. Pause freezes both timing and the transition; revealed answers wait for Next. Delete individual completed sessions from Progress using the trash control. Deletion removes their attempts from reports and rebuilds adaptive memory from the remaining history using the current settings.

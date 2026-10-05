@@ -77,13 +77,13 @@
     "Correction preserves failure",
   );
   results.push("wrong → correct persistence");
-  click('[data-action="next"]');
+  await sleep(1400);
   correct = correctNumber();
   click('[data-action="hint"]');
   click(`[data-answer="${correct}"]`);
   assert(raw().attempts.at(-1).hint === true, "Hint recorded");
   results.push("assisted answer tracking");
-  click('[data-action="next"]');
+  await sleep(1400);
   click('[data-action="reveal"]');
   assert(raw().attempts.at(-1).revealed === true, "Reveal recorded");
   results.push("reveal tracking");

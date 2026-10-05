@@ -8,6 +8,7 @@ import {
   choices,
   choose,
   record,
+  deleteSession,
   summary,
   validate,
   key,
@@ -194,4 +195,31 @@ test("licensed card images cover all 52 cards with accessible names", () => {
     assert.ok(svg.includes("<svg"));
     assert.ok(!/<script|https?:\/\/[^" ]+\.(png|jpg)/i.test(svg));
   }
+});
+
+test("session deletion rebuilds reports and memory using only retained answers", () => {
+ const d = emptyData();
+ const sessions = ['test-session', 'real-session', 'empty-session'].map((id, i) => ({id, startedAt: i * 100, endedAt: i * 100 + 99, mode: 'card-number' as const, duration: 300000}));
+ d.sessions.push(...sessions);
+ const testAnswer = attempt({id:'test-answer', sessionId:'test-session', position:22, at:100, firstCorrect:false, wrong:1});
+ const realAnswer = attempt({id:'real-answer', sessionId:'real-session', position:22, at:200});
+ const otherAnswer = attempt({id:'other-answer', sessionId:'real-session', position:14, at:210});
+ [testAnswer, realAnswer, otherAnswer].forEach(a => record(d, a));
+ const expected = emptyData();expected.sessions.push(sessions[1], sessions[2]);
+ [realAnswer, otherAnswer].forEach(a => record(expected, a));
+ assert.ok(deleteSession(d, 'test-session'));
+ assert.deepEqual(d, expected);
+ assert.equal(summary(d.attempts).accuracy, 100);
+ assert.deepEqual(validate(JSON.parse(JSON.stringify(d))), d);
+ const memory = JSON.stringify(d.memory);
+ assert.ok(deleteSession(d, 'empty-session'));
+ assert.equal(JSON.stringify(d.memory), memory);
+ assert.ok(deleteSession(d, 'real-session'));
+ assert.deepEqual(d.attempts, []);assert.deepEqual(d.memory, {});assert.deepEqual(d.sessions, []);
+});
+test("session deletion cannot remove an active or unknown session", () => {
+ const d = emptyData();d.sessions.push({id:'active', startedAt:1, endedAt:null, mode:'mixed', duration:300000});
+ const before = JSON.stringify(d);
+ assert.equal(deleteSession(d, 'active'), false);assert.equal(deleteSession(d, 'missing'), false);
+ assert.equal(JSON.stringify(d), before);
 });

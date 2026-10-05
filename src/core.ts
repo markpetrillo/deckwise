@@ -141,6 +141,21 @@ export function record(data: Data, attempt: Attempt): void {
     slow: slow ? Math.min(5, prev.slow + 1) : Math.max(0, prev.slow - 1),
   };
 }
+/** Remove a completed session and replay remaining evidence into the review schedule. */
+export function deleteSession(data: Data, sessionId: string): boolean {
+  const session = data.sessions.find(s => s.id === sessionId);
+  if (!session || session.endedAt === null) return false;
+  const rebuilt = emptyData();
+  rebuilt.settings = { ...data.settings };
+  rebuilt.sessions = data.sessions.filter(s => s.id !== sessionId);
+  const remaining = data.attempts.filter(a => a.sessionId !== sessionId)
+    .sort((a, b) => a.at - b.at);
+  for (const attempt of remaining) record(rebuilt, attempt);
+  data.sessions = rebuilt.sessions;
+  data.attempts = rebuilt.attempts;
+  data.memory = rebuilt.memory;
+  return true;
+}
 export function choose(
   data: Data,
   direction: Direction,
