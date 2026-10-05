@@ -43,7 +43,7 @@
     expected.findIndex(
       (c) =>
         `${ranks[c[0]]} of ${suits[c[1]]}` ===
-        document.querySelector(".prompt-caption").textContent,
+        document.querySelector(".prompt-card img").alt,
     ) + 1;
   let correct = correctNumber();
   const buttons = [...document.querySelectorAll("[data-answer]")];
@@ -115,8 +115,8 @@
   click('[data-action="start"]');
   const position = Number(
     document
-      .querySelector(".prompt-caption")
-      .textContent.replace("Position ", ""),
+      .querySelector(".prompt-card .number-card")
+      .getAttribute("aria-label").replace("Position ", ""),
   );
   const cardOptions = [...document.querySelectorAll("[data-answer]")].map(
     (b) => expected[Number(b.dataset.answer) - 1],

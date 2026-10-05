@@ -48,3 +48,5 @@ Desktop browser emulation does not establish behavior on every physical iPhone/A
 
 All 10 unit tests pass, including all 52 local image files. Chromium at 390x844 and 320x667 passed wrong/correct retries, hint/reveal recording, both directions, reporting and gallery navigation. Verified the paused timer remains unchanged for 1.4 seconds and ending an unanswered session leaves attempt history and memory unchanged. All 52 gallery images loaded. Pause and End session remain visible on the compact phone. No JavaScript errors occurred. Card faces, gallery, dark practice screen and compact controls were visually inspected.
 Production preview reloaded successfully under Chromium offline network emulation, with all 52 card images available from the service-worker cache.
+
+Navy/minimalist update: all 10 unit tests and the complete browser smoke test passed. Deck and Practice labels were removed while accessible card names remain. The Ace of Spades has no promotional text or QR overlay. Inspected mobile screenshots and fixed delayed gallery scroll events after navigation. No runtime errors occurred in the final check.

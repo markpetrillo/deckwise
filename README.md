@@ -45,3 +45,5 @@ Deckwise uses a transparent heuristic scheduler, not FSRS or a validated memory-
 ## Credits
 
 Mnemonica was created by Juan Tamariz. This is an independent practice companion, not an official or endorsed product. Card order checked against [MemDeck’s lookup](https://memdeck.org/toolbox/) and the independently maintained [StackDrill order](https://github.com/n3urs/MnemonicaStack#the-stack). Card artwork is by Adrian Kennard, released under [CC0](https://www.me.uk/cards/), distributed through [letele/playing-cards](https://github.com/letele/playing-cards). The license is included in public/cards/LICENSE.txt.
+
+Personal interface: navy palette, minimal deck/practice labels, and a clean Ace of Spades without the source artwork’s promotional QR/text. CC0 attribution and license remain in Settings and the repository.
