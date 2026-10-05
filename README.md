@@ -2,6 +2,8 @@
 
 A small, mobile-first Mnemonica practice app. Browse all 52 cards and spend five minutes building quicker recall, with practice that adapts to your answers.
 
+**Live app:** https://deckwise-sigma.vercel.app · **Repository:** https://github.com/markpetrillo/deckwise
+
 ## MVP
 
 - Full-deck gallery with touch scrolling, snap-to-card navigation, arrow keys, and position slider.

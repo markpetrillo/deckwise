@@ -2,6 +2,12 @@
 
 ## Hosting
 
+- Public app: https://deckwise-sigma.vercel.app
+- Repository: https://github.com/markpetrillo/deckwise
+- Vercel dashboard: https://vercel.com/mark-petrillos-projects/deckwise
+- Production branch: `main`
+- Local checkout: `C:\dev\deckwise`
+
 Deckwise is a static Vite application hosted on Vercel, built from its own GitHub repository. `vercel.json` specifies the Vite framework, `npm run build`, `dist` output, and no-cache service-worker headers.
 
 Git pushes to the production branch trigger Vercel builds after the Git integration is connected. CI also runs the core tests and production build on pushes and pull requests. No database or application secrets are required.
