@@ -159,6 +159,18 @@
     "No horizontal page overflow",
   );
   assert(raw().attempts.length >= 5, "Attempts saved");
+  click('[data-action="home"]');
+  click('[data-action="start"]');
+  click('[data-action="pause"]');
+  const pausedTime = document.querySelector('#remaining').textContent;
+  const beforeEnd = raw();
+  await sleep(1400);
+  assert(document.querySelector('#remaining').textContent === pausedTime, 'Pause freezes timer');
+  click('[data-action="finish"]');
+  assert(raw().attempts.length === beforeEnd.attempts.length, 'Early end does not grade unanswered prompt');
+  assert(JSON.stringify(raw().memory) === JSON.stringify(beforeEnd.memory), 'Early end preserves learning state');
+  document.querySelector('dialog').close();
+  results.push('frozen pause and unanswered early finish');
   return JSON.stringify({
     passed: results,
     attempts: raw().attempts.length,

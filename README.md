@@ -13,7 +13,7 @@ A small, mobile-first Mnemonica practice app. Browse all 52 cards and spend five
 - Independent scheduling for the 104 directional associations; errors and slow answers increase practice priority.
 - Accuracy, median response time, speed-target results, daily trends, per-card breakdowns, session history, and raw-attempt details.
 - Device-local history and review dates, validated backup/restore, and CSV export.
-- Installable PWA, versioned offline cache, original SVG card art, accessible controls, and reduced-motion support.
+- Installable PWA, versioned offline cache, CC0 classic English SVG card images, accessible controls, and reduced-motion support.
 
 There is no account or cloud sync. Progress belongs to the browser/device where you practice. Export a backup before clearing browser data or changing devices. Hosting-provider request logs are outside the app; Deckwise includes no analytics SDK or tracking pixels.
 
@@ -44,4 +44,4 @@ Deckwise uses a transparent heuristic scheduler, not FSRS or a validated memory-
 
 ## Credits
 
-Mnemonica was created by Juan Tamariz. This is an independent practice companion, not an official or endorsed product. Card order checked against [MemDeck’s lookup](https://memdeck.org/toolbox/) and the independently maintained [StackDrill order](https://github.com/n3urs/MnemonicaStack#the-stack). Artwork and interface were created for Deckwise; no MemDeck assets were copied.
+Mnemonica was created by Juan Tamariz. This is an independent practice companion, not an official or endorsed product. Card order checked against [MemDeck’s lookup](https://memdeck.org/toolbox/) and the independently maintained [StackDrill order](https://github.com/n3urs/MnemonicaStack#the-stack). Card artwork is by Adrian Kennard, released under [CC0](https://www.me.uk/cards/), distributed through [letele/playing-cards](https://github.com/letele/playing-cards). The license is included in public/cards/LICENSE.txt.

@@ -43,3 +43,8 @@ GitHub Actions ran the core tests and production build successfully. Vercel repo
 ## Limits
 
 Desktop browser emulation does not establish behavior on every physical iPhone/Android device. Home-screen installation should be tried on Mark's actual phone. The heuristic scheduler's educational effectiveness has not been studied; delayed recall comparisons are a later evaluation task.
+
+## Dark redesign verification
+
+All 10 unit tests pass, including all 52 local image files. Chromium at 390x844 and 320x667 passed wrong/correct retries, hint/reveal recording, both directions, reporting and gallery navigation. Verified the paused timer remains unchanged for 1.4 seconds and ending an unanswered session leaves attempt history and memory unchanged. All 52 gallery images loaded. Pause and End session remain visible on the compact phone. No JavaScript errors occurred. Card faces, gallery, dark practice screen and compact controls were visually inspected.
+Production preview reloaded successfully under Chromium offline network emulation, with all 52 card images available from the service-worker cache.

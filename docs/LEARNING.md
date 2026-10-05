@@ -59,3 +59,5 @@ This guards against immediate repetition inflating evidence. It still measures m
 Versioned JSON is persisted under `deckwise.v1` in localStorage after submissions and settings changes. The memory schedule is included in a complete backup. Restore checks version, ranges, types, IDs, association keys, and session references before requesting replacement confirmation. Files above 20 MB are rejected.
 
 The app reports storage failures and provides an export action. Multiple tabs detect conflicting changes; active practice pauses and asks for a reload. Cross-device synchronization is intentionally absent. Browser storage is finite; export regularly if accumulating a large history.
+
+Pause freezes active session time. Switching away from the app or a browser scheduling gap over five seconds also pauses until Resume. An interrupted unanswered question keeps correctness grading but excludes its first-response time from speed statistics. A first response already recorded before a pause retains its timing. End session saves completed answers; it never grades an unanswered prompt.

@@ -1,3 +1,5 @@
+import { cardName } from "../src/core";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
@@ -12,7 +14,7 @@ import {
   type Attempt,
   type Direction,
 } from "../src/core";
-import { cardSvg } from "../src/cards";
+import { cardImage } from "../src/cards";
 const attempt = (extra: Partial<Attempt> = {}): Attempt => ({
   id: "attempt-1",
   sessionId: "session-1",
@@ -183,12 +185,13 @@ test("damaged backups cannot overwrite progress", () => {
   );
   assert.throws(() => validate({ ...d, memory: { "__proto__:1": {} } }));
 });
-test("original vector art names every card, renders pips and face cards", () => {
+test("licensed card images cover all 52 cards with accessible names", () => {
   for (let i = 1; i <= 52; i++) {
-    const svg = cardSvg(i);
-    assert.ok(svg.includes("aria-label="));
-    assert.ok(svg.includes('viewBox="0 0 240 336"'));
+    const image = cardImage(i);
+    assert.ok(image.includes(`alt="${cardName(i)}"`));
+    const path = image.match(/src="([^" ]+)"/)![1];
+    const svg = readFileSync(new URL(`../public${path}`, import.meta.url), "utf8");
+    assert.ok(svg.includes("<svg"));
+    assert.ok(!/<script|https?:\/\/[^" ]+\.(png|jpg)/i.test(svg));
   }
-  assert.ok(cardSvg(7).includes("Ace of Spades"));
-  assert.ok(cardSvg(22).includes("Eight of Spades"));
 });

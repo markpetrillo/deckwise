@@ -1,4 +1,6 @@
+
 import "./style.css";
+import "./dark.css";
 import {
   STACK,
   cardName,
@@ -15,7 +17,7 @@ import {
   type Attempt,
   type Session,
 } from "./core";
-import { cardSvg, numberCard } from "./cards";
+import { cardImage, numberCard } from "./cards";
 const app = document.querySelector<HTMLDivElement>("#app")!;
 const STORE = "deckwise.v1";
 let storageProblem = "";
@@ -101,8 +103,9 @@ for (const s of data.sessions)
 function chrome(body: string) {
   app.innerHTML = `<div class="shell"><header class="header"><a href="#" class="brand" data-action="home"><span class="brand-mark">♠</span>deckwise<span class="brand-dot">.</span></a><span class="stack-label">MNEMONICA · 52 CARDS</span><button class="icon-button" data-action="settings" aria-label="Settings">⚙</button></header>${storageProblem ? `<div class="warning" role="alert">${esc(storageProblem)} <button data-action="export">Export backup</button></div>` : ""}<main>${body}</main><nav class="nav" aria-label="Main navigation">${[
     ["practice", "Practice", "◎"],
-    ["deck", "The deck", "♧"],
+    ["deck", "Deck", "♧"],
     ["progress", "Progress", "▥"],
+    ["settings", "Settings", "⚙"],
   ]
     .map(
       ([id, label, icon]) =>
@@ -126,7 +129,7 @@ function practice() {
         (m) => m.due <= Date.now(),
       ).length;
     chrome(
-      `<section class="intro"><div class="eyebrow">A LITTLE PRACTICE, EVERY DAY</div><h1>Make the stack<br>second nature.</h1><p>Five minutes toward faster recall.</p></section><div class="welcome-stage"><div class="ghost-card left">${cardSvg(21)}</div><div class="hero-card">${cardSvg(22)}</div><div class="ghost-card right">${cardSvg(23)}</div></div><section class="start-panel"><div class="segmented" aria-label="Practice direction">${(["card-number", "number-card", "mixed"] as Mode[]).map((m) => `<button data-mode="${m}" aria-pressed="${data.settings.mode === m}" class="${data.settings.mode === m ? "selected" : ""}">${modeName(m)}</button>`).join("")}</div><button class="primary start" data-action="start" ${storageProblem ? "disabled" : ""}>Start ${data.settings.minutes}-minute practice <span>↗</span></button><div class="start-note">${data.attempts.length ? `${due} associations due · Weak cards return more often` : "Full deck · Five choices · Adapts as you practice"}</div></section><div class="mini-stats"><div><strong>${s.eligibleTotal ? s.accuracy.toFixed(0) + "%" : "—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median correct answer</span></div><div><strong>${new Set(data.attempts.map((a) => a.position)).size}<small>/52</small></strong><span>Cards practiced</span></div></div>`,
+      `<section class="page-heading"><h1>Practice</h1></section><section class="start-panel"><div class="segmented" aria-label="Practice direction">${(["card-number", "number-card", "mixed"] as Mode[]).map((m) => `<button data-mode="${m}" aria-pressed="${data.settings.mode === m}" class="${data.settings.mode === m ? "selected" : ""}">${modeName(m)}</button>`).join("")}</div><button class="primary start" data-action="start" ${storageProblem ? "disabled" : ""}>Start ${data.settings.minutes}-minute session <span>↗</span></button><div class="start-note">${data.attempts.length ? `${due} associations due · Adaptive review` : "52 cards · 5 choices"}</div></section><div class="mini-stats"><div><strong>${s.eligibleTotal ? s.accuracy.toFixed(0) + "%" : "—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median correct answer</span></div><div><strong>${new Set(data.attempts.map((a) => a.position)).size}<small>/52</small></strong><span>Cards practiced</span></div></div>`,
     );
     return;
   }
@@ -138,17 +141,17 @@ function practice() {
     ? q.revealed
       ? "Answer revealed"
       : q.wrong
-        ? "Corrected — we’ll revisit this"
+        ? "Corrected"
         : q.hint
           ? "Correct with a hint"
-          : "Correct. Nicely recalled."
+          : "Correct"
     : q.wrong
-      ? "Not quite. Try another card."
+      ? "Incorrect. Try again."
       : q.direction === "card-number"
         ? "What position is this card?"
         : "Which card is at this position?";
   chrome(
-    `<section class="session-top"><div><span class="eyebrow">${modeName(q.direction)}</span><h1 class="small-heading">${paused ? "Practice paused" : "Find the association."}</h1></div><button class="session-timer" data-action="pause" aria-label="${paused ? "Resume" : "Pause"} practice"><span id="remaining">${timer(active.duration - sessionElapsed)}</span><span>${paused ? "▶ Resume" : "Ⅱ Pause"}</span></button></section><div class="session-progress"><span id="session-bar" style="width:${Math.min(100, (sessionElapsed / active.duration) * 100)}%"></span></div><div class="question-stage ${paused ? "paused" : ""}"><div class="prompt-card">${q.direction === "card-number" ? cardSvg(q.position) : numberCard(q.position)}</div><div class="prompt-caption">${q.direction === "card-number" ? cardName(q.position) : `Position ${q.position}`}</div></div><div class="feedback ${q.done ? "positive" : q.wrong ? "negative" : ""}" role="status" aria-live="polite">${paused ? "Resume when you’re ready." : result}</div><div class="answers" aria-label="Answer choices">${q.options.map((p, i) => `<button class="answer ${q!.selected.includes(p) && p !== q!.position ? "wrong" : ""} ${q!.done && p === q!.position ? "correct" : ""}" data-answer="${p}" aria-label="${q!.direction === "card-number" ? `Position ${p}` : cardName(p)}" ${paused || q!.done || q!.selected.includes(p) ? "disabled" : ""}>${q!.direction === "card-number" ? numberCard(p) : cardSvg(p)}<span class="key-label">${i + 1}</span></button>`).join("")}</div><div class="practice-actions">${q.done ? `<button class="primary next" data-action="next" ${paused ? "disabled" : ""}>Next card <span>→</span></button>` : `<button class="text-button" data-action="hint" ${paused ? "disabled" : ""}>☼ Neighbor hint</button><button class="text-button" data-action="reveal" ${paused ? "disabled" : ""}>Reveal answer</button>`}</div>${q.hint && !q.done ? `<div class="hint-panel">${q.position > 1 ? `<div><span>Before</span>${cardSvg(q.position - 1)}</div>` : "<span>Top of deck</span>"}${q.position < 52 ? `<div><span>After</span>${cardSvg(q.position + 1)}</div>` : "<span>Bottom of deck</span>"}</div>` : ""}<div class="session-bottom"><span>${stats.total} answered · ${stats.eligibleTotal ? stats.accuracy.toFixed(0) + "%" : "—"} independent</span><button class="text-button" data-action="finish">Finish session</button></div>`,
+    `<section class="session-top"><div><span class="eyebrow">${modeName(q.direction)}</span><h1 class="small-heading">${paused ? "Practice paused" : "Practice"}</h1></div><div class="session-controls"><button class="session-timer" data-action="pause" aria-label="${paused ? "Resume" : "Pause"} practice"><span id="remaining">${timer(active.duration - sessionElapsed)}</span><span>${paused ? "▶ Resume" : "Ⅱ Pause"}</span></button><button class="text-button end-session" data-action="finish">End session</button></div></section><div class="session-progress"><span id="session-bar" style="width:${Math.min(100, (sessionElapsed / active.duration) * 100)}%"></span></div><div class="question-stage ${paused ? "paused" : ""}"><div class="prompt-card">${q.direction === "card-number" ? cardImage(q.position) : numberCard(q.position)}</div><div class="prompt-caption">${q.direction === "card-number" ? cardName(q.position) : `Position ${q.position}`}</div></div><div class="feedback ${q.done ? "positive" : q.wrong ? "negative" : ""}" role="status" aria-live="polite">${paused ? "Paused · interrupted answer timing is excluded." : result}</div><div class="answers" aria-label="Answer choices">${q.options.map((p, i) => `<button class="answer ${q!.selected.includes(p) && p !== q!.position ? "wrong" : ""} ${q!.done && p === q!.position ? "correct" : ""}" data-answer="${p}" aria-label="${q!.direction === "card-number" ? `Position ${p}` : cardName(p)}" ${paused || q!.done || q!.selected.includes(p) ? "disabled" : ""}>${q!.direction === "card-number" ? numberCard(p) : cardImage(p)}<span class="key-label">${i + 1}</span></button>`).join("")}</div><div class="practice-actions">${q.done ? `<button class="primary next" data-action="next" ${paused ? "disabled" : ""}>Next card <span>→</span></button>` : `<button class="text-button" data-action="hint" ${paused ? "disabled" : ""}>☼ Neighbor hint</button><button class="text-button" data-action="reveal" ${paused ? "disabled" : ""}>Reveal answer</button>`}</div>${q.hint && !q.done ? `<div class="hint-panel">${q.position > 1 ? `<div><span>Before</span>${cardImage(q.position - 1)}</div>` : "<span>Top of deck</span>"}${q.position < 52 ? `<div><span>After</span>${cardImage(q.position + 1)}</div>` : "<span>Bottom of deck</span>"}</div>` : ""}<div class="session-bottom"><span>${stats.total} answered · ${stats.eligibleTotal ? stats.accuracy.toFixed(0) + "%" : "—"} independent</span></div>`,
   );
 }
 function newQuestion() {
@@ -228,6 +231,7 @@ function answer(p: number) {
   if (storageConflict) return;
   if (!q || q.done || paused || q.selected.includes(p)) return;
   tick();
+  if (paused || !q) return;
   q.selected.push(p);
   if (q.firstCorrect === null) {
     q.firstCorrect = p === q.position;
@@ -242,6 +246,7 @@ function answer(p: number) {
 function reveal() {
   if (!q || paused || q.done) return;
   tick();
+  if (paused || !q) return;
   q.revealed = true;
   q.done = true;
   if (q.firstCorrect === null) {
@@ -265,7 +270,7 @@ function finish() {
     s = summary(attempts);
   render();
   showDialog(
-    `<div class="eyebrow">SESSION COMPLETE</div><h2>A little more fluent.</h2><p>${s.total} questions answered in ${timer(sessionElapsed)} of active practice.</p><div class="summary-grid"><div><strong>${s.eligibleTotal ? s.accuracy.toFixed(0) + "%" : "—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median correct answer</span></div><div><strong>${s.wrong}</strong><span>First-answer misses</span></div><div><strong>${s.hints}</strong><span>Hints used</span></div></div><p class="muted">${s.wrong ? "Missed associations will return sooner." : "Spaced practice builds evidence over time."} Your session is saved on this device.</p><button class="primary" data-action="summary-progress">View progress →</button>`,
+    `<h2>Session results</h2><p>${s.total} questions answered in ${timer(sessionElapsed)} of active practice.</p><div class="summary-grid"><div><strong>${s.eligibleTotal ? s.accuracy.toFixed(0) + "%" : "—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median correct answer</span></div><div><strong>${s.wrong}</strong><span>First-answer misses</span></div><div><strong>${s.hints}</strong><span>Hints used</span></div></div><p class="muted">Results saved on this device. Unanswered questions are excluded.</p><button class="primary" data-action="summary-progress">View progress →</button>`,
   );
 }
 function tick() {
@@ -275,7 +280,7 @@ function tick() {
   if (active && !paused && !document.hidden) {
     if (delta > 5000) {
       paused = true;
-      if (q) q.interrupted = true;
+      if (q && q.firstCorrect === null) q.interrupted = true;
       render();
       return;
     }
@@ -301,7 +306,7 @@ document.addEventListener("visibilitychange", () => {
     tick();
     if (document.hidden) {
       paused = true;
-      if (q && !q.done) q.interrupted = true;
+      if (q && q.firstCorrect === null) q.interrupted = true;
     }
     render();
   }
@@ -311,7 +316,7 @@ window.addEventListener("storage", (e) => {
   if (active) {
     storageConflict = true;
     paused = true;
-    if (q) q.interrupted = true;
+    if (q && q.firstCorrect === null) q.interrupted = true;
     storageProblem =
       "Another tab changed your progress. Reload this tab before continuing.";
   } else
@@ -325,7 +330,7 @@ window.addEventListener("storage", (e) => {
 });
 function deck() {
   chrome(
-    `<section class="page-heading"><div class="eyebrow">THE TAMARIZ STACK</div><h1>Meet your deck.</h1><p>Swipe through all 52 cards, top to bottom.</p></section><div class="gallery" tabindex="0" aria-label="Mnemonica deck, swipe or use arrow keys">${STACK.map((_, i) => `<article class="gallery-slide" aria-label="Position ${i + 1}, ${cardName(i + 1)}"><div class="position-pill">${i + 1}<span> / 52</span></div><div class="gallery-card">${cardSvg(i + 1)}</div><h2>${cardName(i + 1)}</h2></article>`).join("")}</div><div class="gallery-controls"><button class="round" data-action="previous" aria-label="Previous card">←</button><span id="deck-position">${deckIndex + 1} of 52</span><button class="round" data-action="following" aria-label="Next card">→</button></div><label class="jump-label" for="jump">Jump to position <span id="jump-value">${deckIndex + 1}</span></label><input id="jump" type="range" min="1" max="52" value="${deckIndex + 1}" aria-label="Jump to deck position"/><p class="footnote">Juan Tamariz’s Mnemonica · Original stack order</p>`,
+    `<section class="page-heading"><h1>Deck</h1><p>Swipe through all 52 cards, top to bottom.</p></section><div class="gallery" tabindex="0" aria-label="Mnemonica deck, swipe or use arrow keys">${STACK.map((_, i) => `<article class="gallery-slide" aria-label="Position ${i + 1}, ${cardName(i + 1)}"><div class="position-pill">${i + 1}<span> / 52</span></div><div class="gallery-card">${cardImage(i + 1)}</div><h2>${cardName(i + 1)}</h2></article>`).join("")}</div><div class="gallery-controls"><button class="round" data-action="previous" aria-label="Previous card">←</button><span id="deck-position">${deckIndex + 1} of 52</span><button class="round" data-action="following" aria-label="Next card">→</button></div><label class="jump-label" for="jump">Jump to position <span id="jump-value">${deckIndex + 1}</span></label><input id="jump" type="range" min="1" max="52" value="${deckIndex + 1}" aria-label="Jump to deck position"/><p class="footnote">Juan Tamariz’s Mnemonica · Original stack order</p>`,
   );
   const gallery = document.querySelector<HTMLDivElement>(".gallery")!;
   gallery.scrollLeft = gallery.clientWidth * deckIndex;
@@ -399,15 +404,15 @@ function trend(attempts: Attempt[]): string {
     y: 119 - d.s.accuracy * 0.9,
     ...d,
   }));
-  return `<div class="chart"><div class="chart-title"><h2>Accuracy over time</h2><span>Last 14 days</span></div><svg viewBox="0 0 380 160" role="img" aria-label="Independent accuracy by day for the last 14 days. Exact values follow below."><line x1="26" x2="352" y1="29" y2="29" stroke="#dedfd5" stroke-dasharray="3 4"/><line x1="26" x2="352" y1="74" y2="74" stroke="#dedfd5" stroke-dasharray="3 4"/><line x1="26" x2="352" y1="119" y2="119" stroke="#dedfd5"/><text x="3" y="32" font-size="9" fill="#717a74">100</text><text x="8" y="78" font-size="9" fill="#717a74">50</text>${points
+  return `<div class="chart"><div class="chart-title"><h2>Accuracy over time</h2><span>Last 14 days</span></div><svg viewBox="0 0 380 160" role="img" aria-label="Independent accuracy by day for the last 14 days. Exact values follow below."><line x1="26" x2="352" y1="29" y2="29" stroke="#34443c" stroke-dasharray="3 4"/><line x1="26" x2="352" y1="74" y2="74" stroke="#34443c" stroke-dasharray="3 4"/><line x1="26" x2="352" y1="119" y2="119" stroke="#34443c"/><text x="3" y="32" font-size="9" fill="#a6b5ab">100</text><text x="8" y="78" font-size="9" fill="#a6b5ab">50</text>${points
     .filter((p) => p.s.eligibleTotal)
     .map(
       (p) =>
-        `<line x1="${p.x}" x2="${p.x}" y1="119" y2="${p.y}" stroke="#ced9cd" stroke-width="12"/><circle cx="${p.x}" cy="${p.y}" r="4" fill="#246751"><title>${fmtDate(p.at)}: ${p.s.accuracy.toFixed(0)}%, ${p.s.total} answers</title></circle>`,
+        `<line x1="${p.x}" x2="${p.x}" y1="119" y2="${p.y}" stroke="#426451" stroke-width="12"/><circle cx="${p.x}" cy="${p.y}" r="4" fill="#b7d2a8"><title>${fmtDate(p.at)}: ${p.s.accuracy.toFixed(0)}%, ${p.s.total} answers</title></circle>`,
     )
     .join(
       "",
-    )}<text x="26" y="145" font-size="10" fill="#717a74">${fmtDate(days[0].at)}</text><text x="323" y="145" font-size="10" fill="#717a74">Today</text></svg><details><summary>Daily accuracy &amp; speed</summary><div class="table-wrap"><table><thead><tr><th>Date</th><th>Answers</th><th>Accuracy</th><th>Median</th></tr></thead><tbody>${
+    )}<text x="26" y="145" font-size="10" fill="#a6b5ab">${fmtDate(days[0].at)}</text><text x="323" y="145" font-size="10" fill="#a6b5ab">Today</text></svg><details><summary>Daily accuracy &amp; speed</summary><div class="table-wrap"><table><thead><tr><th>Date</th><th>Answers</th><th>Accuracy</th><th>Median</th></tr></thead><tbody>${
     days
       .filter((d) => d.s.total)
       .map(
@@ -437,7 +442,7 @@ function progress() {
     .reverse()
     .filter((session) => attempts.some((a) => a.sessionId === session.id));
   chrome(
-    `<section class="page-heading"><div class="eyebrow">YOUR PRACTICE, IN PERSPECTIVE</div><h1>A clearer picture.</h1><p>Accuracy first. Speed follows.</p></section><div class="filters"><label>Direction<select id="stats-direction"><option value="all">Both directions</option><option value="card-number" ${filter === "card-number" ? "selected" : ""}>Card → number</option><option value="number-card" ${filter === "number-card" ? "selected" : ""}>Number → card</option></select></label><label>Period<select id="stats-period">${[
+    `<section class="page-heading"><h1>Progress</h1></section><div class="filters"><label>Direction<select id="stats-direction"><option value="all">Both directions</option><option value="card-number" ${filter === "card-number" ? "selected" : ""}>Card → number</option><option value="number-card" ${filter === "number-card" ? "selected" : ""}>Number → card</option></select></label><label>Period<select id="stats-period">${[
       ["all", "All time"],
       ["7", "Last 7 days"],
       ["30", "Last 30 days"],
@@ -448,7 +453,7 @@ function progress() {
       )
       .join(
         "",
-      )}</select></label></div><div class="summary-grid stat-cards"><div><strong>${s.eligibleTotal ? s.accuracy.toFixed(0) + "%" : "—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median correct answer</span></div><div><strong>${s.total}</strong><span>Questions answered</span></div><div><strong>${slow.length ? Math.round((within / slow.length) * 100) + "%" : "—"}</strong><span>Within ${data.settings.speedTarget}s target</span></div></div>${!s.total ? '<div class="empty"><span>♧</span><h2>Your story starts with a session.</h2><p>Practice results will appear here, with each direction tracked separately.</p><button class="primary" data-action="home">Go to practice →</button></div>' : `${trend(attempts)}<div class="report-notes"><span>${s.wrong} first-answer misses</span><span>${s.hints} questions with hints</span><span>${new Set(attempts.map((a) => a.position)).size}/52 cards practiced</span></div>`}<section class="report-section"><div class="chart-title"><h2>Your deck, association by association</h2><span>Tap a card for details</span></div><p class="muted compact">${filter === "all" ? "Results combine both directions. Filter above to find a directional weakness." : modeName(filter as Direction)} Timing excludes interrupted and recently exposed answers.</p><div class="table-wrap"><table class="deck-table"><thead><tr><th>Position / card</th><th>Answers</th><th>Accuracy</th><th>Median</th></tr></thead><tbody>${STACK.map(
+      )}</select></label></div><div class="summary-grid stat-cards"><div><strong>${s.eligibleTotal ? s.accuracy.toFixed(0) + "%" : "—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median correct answer</span></div><div><strong>${s.total}</strong><span>Questions answered</span></div><div><strong>${slow.length ? Math.round((within / slow.length) * 100) + "%" : "—"}</strong><span>Within ${data.settings.speedTarget}s target</span></div></div>${!s.total ? '<div class="empty"><span>♧</span><h2>No practice results</h2><p>Practice results will appear here, with each direction tracked separately.</p><button class="primary" data-action="home">Go to practice →</button></div>' : `${trend(attempts)}<div class="report-notes"><span>${s.wrong} first-answer misses</span><span>${s.hints} questions with hints</span><span>${new Set(attempts.map((a) => a.position)).size}/52 cards practiced</span></div>`}<section class="report-section"><div class="chart-title"><h2>Per-card results</h2><span>Tap a card for details</span></div><p class="muted compact">${filter === "all" ? "Results combine both directions. Filter above to find a directional weakness." : modeName(filter as Direction)} Timing excludes interrupted and recently exposed answers.</p><div class="table-wrap"><table class="deck-table"><thead><tr><th>Position / card</th><th>Answers</th><th>Accuracy</th><th>Median</th></tr></thead><tbody>${STACK.map(
       (_, i) => {
         const ss = summary(attempts.filter((a) => a.position === i + 1));
         return `<tr><td><button class="card-detail" data-position="${i + 1}"><span class="position-number">${i + 1}</span><span>${cardName(i + 1)}</span></button></td><td>${ss.total || "—"}</td><td><span class="accuracy ${ss.eligibleTotal && ss.accuracy < 75 ? "low" : ""}">${ss.total ? ss.accuracy.toFixed(0) + "%" : "—"}</span></td><td>${fmtTime(ss.medianMs)}</td></tr>`;
@@ -493,7 +498,7 @@ function attemptList(attempts: Attempt[]) {
 }
 function settings() {
   chrome(
-    `<section class="page-heading"><div class="eyebrow">MAKE IT YOURS</div><h1>A simple routine.</h1></section><section class="settings-panel"><label>Session length<select id="minutes">${[1, 3, 5, 10].map((n) => `<option value="${n}" ${data.settings.minutes === n ? "selected" : ""}>${n} minutes</option>`).join("")}</select></label><label>Speed target<select id="speed">${[2, 3, 5, 8, 10].map((n) => `<option value="${n}" ${data.settings.speedTarget === n ? "selected" : ""}>${n} seconds</option>`).join("")}</select></label><label class="toggle-row"><span>Use speed to adapt practice<small>Slower correct associations get extra practice.</small></span><input id="adaptive-speed" type="checkbox" ${data.settings.speedAdaptive ? "checked" : ""}/></label><p class="muted">Accuracy drives your review schedule. Timing is compared within each direction and adapts gently after enough practice.</p></section><section class="settings-panel"><h2>Keep your progress</h2><p>Saved in this browser on this device. No account, tracking, or cloud sync. Clearing browser data removes your history.</p><button class="primary" data-action="export">Export a backup ↓</button><label class="file-label">Restore from a backup<input type="file" id="import" accept="application/json,.json"/></label><p class="muted">Restore replaces this device’s progress after confirmation.</p></section><section class="settings-panel"><h2>Install Deckwise</h2><p>Keep it on your home screen and practice offline after your first visit.</p><button class="primary" data-action="install">${installPrompt ? "Install app ↗" : "How to install ↗"}</button><p id="offline-status" class="muted">${navigator.onLine ? "Online" : "Offline"} · ${navigator.serviceWorker?.controller ? "Offline app ready" : "Offline setup available on the published site"}</p></section><section class="settings-panel"><h2>A fresh start</h2><button class="text-button danger" data-action="reset">Reset all progress</button></section><p class="footnote">Independent practice companion for Juan Tamariz’s Mnemonica. Deckwise v0.1 · Original card artwork.</p>`,
+    `<section class="page-heading"><h1>Settings</h1></section><section class="settings-panel"><label>Session length<select id="minutes">${[1, 3, 5, 10].map((n) => `<option value="${n}" ${data.settings.minutes === n ? "selected" : ""}>${n} minutes</option>`).join("")}</select></label><label>Speed target<select id="speed">${[2, 3, 5, 8, 10].map((n) => `<option value="${n}" ${data.settings.speedTarget === n ? "selected" : ""}>${n} seconds</option>`).join("")}</select></label><label class="toggle-row"><span>Use speed to adapt practice<small>Slower correct associations get extra practice.</small></span><input id="adaptive-speed" type="checkbox" ${data.settings.speedAdaptive ? "checked" : ""}/></label><p class="muted">Accuracy drives your review schedule. Timing is compared within each direction and adapts gently after enough practice.</p></section><section class="settings-panel"><h2>Data</h2><p>Saved in this browser on this device. No account, tracking, or cloud sync. Clearing browser data removes your history.</p><button class="primary" data-action="export">Export a backup ↓</button><label class="file-label">Restore from a backup<input type="file" id="import" accept="application/json,.json"/></label><p class="muted">Restore replaces this device’s progress after confirmation.</p></section><section class="settings-panel"><h2>Install Deckwise</h2><p>Install for standalone and offline use.</p><button class="primary" data-action="install">${installPrompt ? "Install app ↗" : "How to install ↗"}</button><p id="offline-status" class="muted">${navigator.onLine ? "Online" : "Offline"} · ${navigator.serviceWorker?.controller ? "Offline app ready" : "Offline setup available on the published site"}</p></section><section class="settings-panel"><h2>Reset</h2><button class="text-button danger" data-action="reset">Reset all progress</button></section><p class="footnote">Independent practice companion for Juan Tamariz’s Mnemonica. Deckwise v0.2 · <a href="https://www.me.uk/cards/" target="_blank" rel="noopener">Card artwork: Adrian Kennard (CC0)</a>.</p>`,
   );
 }
 function download(name: string, content: string, type: string) {
@@ -628,15 +633,17 @@ function bind(root: ParentNode = app) {
             break;
           case "pause":
             if (storageConflict) return;
+            const resume = paused;
             tick();
-            paused = !paused;
-            if (q && !q.done) q.interrupted = true;
+            paused = !resume;
+            if (q && q.firstCorrect === null) q.interrupted = true;
             lastTick = performance.now();
             render();
             break;
           case "hint":
             if (q && !paused && !q.done) {
               tick();
+              if (paused || !q) return;
               q.hint = true;
               if (q.position > 1) lastExposure.set(q.position - 1, Date.now());
               if (q.position < 52) lastExposure.set(q.position + 1, Date.now());
@@ -676,7 +683,7 @@ function bind(root: ParentNode = app) {
               installPrompt = null;
             } else
               showDialog(
-                '<h2>Deckwise on your home screen.</h2><p><strong>iPhone / iPad:</strong> open this site in Safari, tap Share, then “Add to Home Screen.” Enable “Open as Web App” if shown.</p><p><strong>Android:</strong> open in Chrome and choose “Install app” or “Add to Home screen” from the menu.</p><p><strong>Desktop:</strong> use the install icon in Chrome or Edge’s address bar.</p><p class="muted">Visit once online and wait for “Offline app ready” before relying on offline practice.</p>',
+                '<h2>Install Deckwise</h2><p><strong>iPhone / iPad:</strong> open this site in Safari, tap Share, then “Add to Home Screen.” Enable “Open as Web App” if shown.</p><p><strong>Android:</strong> open in Chrome and choose “Install app” or “Add to Home screen” from the menu.</p><p><strong>Desktop:</strong> use the install icon in Chrome or Edge’s address bar.</p><p class="muted">Visit once online and wait for “Offline app ready” before relying on offline practice.</p>',
               );
             break;
           case "reset":
