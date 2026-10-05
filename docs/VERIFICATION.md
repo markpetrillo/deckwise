@@ -32,6 +32,8 @@ Isolated agent-browser session, Chromium, 390×844 phone viewport.
 
 History persisted across reload. Compact phone (320×667) and desktop (1440×1000) checks showed no horizontal page overflow. Home, practice, and progress screenshots were visually inspected. No runtime browser errors were reported.
 
+Complete backup downloading and restoration passed in a separate Chromium context with downloads explicitly enabled: exported five generated attempts, reset the test history, imported the file, and verified exact data equality. The native CLI's download action was unreliable in this Windows session; the independent browser check confirmed the app's download and restore paths.
+
 ## Production and offline checks
 
 Production manifest identifies Deckwise with standalone display and 192/512-pixel installation icons. Service worker installed and controlled the local production build. With Chromium network emulation set offline, the app reloaded from its cache and started a flashcard session with all five answer choices.
