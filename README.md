@@ -48,4 +48,4 @@ Mnemonica was created by Juan Tamariz. This is an independent practice companion
 
 Personal interface: navy palette, minimal deck/practice labels, and a clean Ace of Spades without the source artwork’s promotional QR/text. CC0 attribution and license remain in Settings and the repository.
 
-Deckwise install icon: custom layered Ace of Spades mark, exported to SVG, 192 px, 512 px, maskable 512 px, and Apple 180 px assets.
+Deckwise install icon: cobalt spade mark from the Deckwise header, exported to SVG, 192 px, 512 px, maskable 512 px, and Apple 180 px assets.

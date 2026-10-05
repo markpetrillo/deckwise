@@ -51,4 +51,4 @@ Production preview reloaded successfully under Chromium offline network emulatio
 
 Navy/minimalist update: all 10 unit tests and the complete browser smoke test passed. Deck and Practice labels were removed while accessible card names remain. The Ace of Spades has no promotional text or QR overlay. Inspected mobile screenshots and fixed delayed gallery scroll events after navigation. No runtime errors occurred in the final check.
 
-Deckwise install icon: custom layered Ace of Spades mark, exported to SVG, 192 px, 512 px, maskable 512 px, and Apple 180 px assets.
+Deckwise install icon: cobalt spade mark from the Deckwise header, exported to SVG, 192 px, 512 px, maskable 512 px, and Apple 180 px assets.
