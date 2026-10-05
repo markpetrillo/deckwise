@@ -5,6 +5,7 @@ import {
   STACK,
   isSequence,
   sequenceNeighbor,
+  sequenceResult,
   type SequenceDirection,
   cardName,
   emptyData,
@@ -57,7 +58,6 @@ let q: {
   direction: Direction;
   options: number[];
   elapsed: number;
-  advanceElapsed: number;
   wrong: number;
   hint: boolean;
   revealed: boolean;
@@ -90,6 +90,7 @@ const fmtTime = (ms: number | null) =>
   ms === null ? "—" : `${(ms / 1000).toFixed(1)}s`;
 const fmtDate = (t: number) =>
   new Date(t).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+const runTime = (ms: number | null) => ms === null ? "—" : `${Math.floor(ms / 60000)}:${(ms / 1000 % 60).toFixed(1).padStart(4, "0")}`;
 const timer = (ms: number) =>
   `${Math.floor(Math.max(0, ms) / 60000)}:${String(Math.floor(Math.max(0, ms) / 1000) % 60).padStart(2, "0")}`;
 function save() {
@@ -163,10 +164,11 @@ function practice() {
         ? ""
         : "";
   chrome(
-    `<section class="session-top"><div><span class="eyebrow">${modeName(q.direction)}</span>${isSequence(q.direction) ? `<span class="sequence-position">${sequenceSource} / 52</span>` : ""}</div><div class="session-controls"><button class="session-timer" data-action="pause" aria-label="${paused ? "Resume" : "Pause"} practice"><span id="remaining">${timer(active.duration - sessionElapsed)}</span><span>${paused ? "▶ Resume" : "Ⅱ Pause"}</span></button><button class="text-button end-session" data-action="finish">End session</button></div></section><div class="session-progress"><span id="session-bar" style="width:${Math.min(100, (sessionElapsed / active.duration) * 100)}%"></span></div><div class="question-stage ${paused ? "paused" : ""}"><div class="prompt-card">${isSequence(q.direction) ? cardImage(sequenceSource) : q.direction === "card-number" ? cardImage(q.position) : numberCard(q.position)}</div></div><div class="feedback ${q.done ? "positive" : q.wrong ? "negative" : ""}" role="status" aria-live="polite">${paused ? "Paused" : result}</div><div class="answers" aria-label="Answer choices">${q.options.map((p, i) => `<button class="answer ${q!.selected.includes(p) && p !== q!.position ? "wrong" : ""} ${q!.done && p === q!.position ? "correct" : ""}" data-answer="${p}" aria-label="${q!.direction === "card-number" ? `Position ${p}` : cardName(p)}" ${paused || q!.done || q!.selected.includes(p) ? "disabled" : ""}>${q!.direction === "card-number" ? numberCard(p) : cardImage(p)}<span class="key-label">${i + 1}</span></button>`).join("")}</div><div class="practice-actions">${q.done ? q.revealed ? `<button class="primary next" data-action="next" ${paused ? "disabled" : ""}>Next card <span>→</span></button>` : `<span class="next-status">${paused ? "Resume to continue" : "Next card…"}</span>` : `${isSequence(q.direction) ? "" : `<button class="text-button" data-action="hint" ${paused ? "disabled" : ""}>☼ Neighbor hint</button>`}<button class="text-button" data-action="reveal" ${paused ? "disabled" : ""}>Reveal answer</button>`}</div>${q.hint && !q.done ? `<div class="hint-panel">${q.position > 1 ? `<div><span>Before</span>${cardImage(q.position - 1)}</div>` : "<span>Top of deck</span>"}${q.position < 52 ? `<div><span>After</span>${cardImage(q.position + 1)}</div>` : "<span>Bottom of deck</span>"}</div>` : ""}<div class="session-bottom"><span>${stats.total} answered · ${stats.eligibleTotal ? stats.accuracy.toFixed(0) + "%" : "—"} independent</span></div>`,
+    `<section class="session-top"><div><span class="eyebrow">${modeName(q.direction)}</span>${isSequence(q.direction) ? `<span class="sequence-position">${stats.total - (data.attempts.some(a => a.id === q!.id) ? 1 : 0) + 1} / 52</span>` : ""}</div><div class="session-controls"><button class="session-timer" data-action="pause" aria-label="${paused ? "Resume" : "Pause"} practice"><span id="remaining">${active.runTarget ? runTime(sessionElapsed) : timer(active.duration - sessionElapsed)}</span><span>${paused ? "▶ Resume" : "Ⅱ Pause"}</span></button><button class="text-button end-session" data-action="finish">End session</button></div></section><div class="session-progress"><span id="session-bar" style="width:${active.runTarget ? data.attempts.filter(a => a.sessionId === active!.id && (a.id !== q?.id || q.done)).length / active.runTarget * 100 : Math.min(100, (sessionElapsed / active.duration) * 100)}%"></span></div><div class="question-stage ${paused ? "paused" : ""}"><div class="prompt-card">${isSequence(q.direction) ? cardImage(sequenceSource) : q.direction === "card-number" ? cardImage(q.position) : numberCard(q.position)}</div></div><div class="feedback ${q.done ? "positive" : q.wrong ? "negative" : ""}" role="status" aria-live="polite">${paused ? "Paused" : result}</div><div class="answers" aria-label="Answer choices">${q.options.map((p, i) => `<button class="answer ${q!.selected.includes(p) && p !== q!.position ? "wrong" : ""} ${q!.done && p === q!.position ? "correct" : ""}" data-answer="${p}" aria-label="${q!.direction === "card-number" ? `Position ${p}` : cardName(p)}" ${paused || q!.done || q!.selected.includes(p) ? "disabled" : ""}>${q!.direction === "card-number" ? numberCard(p) : cardImage(p)}<span class="key-label">${i + 1}</span></button>`).join("")}</div><div class="practice-actions">${q.done ? q.revealed ? `<button class="primary next" data-action="next" ${paused ? "disabled" : ""}>Next card <span>→</span></button>` : `<span class="next-status">${paused ? "Resume to continue" : "Next card…"}</span>` : `${isSequence(q.direction) ? "" : `<button class="text-button" data-action="hint" ${paused ? "disabled" : ""}>☼ Neighbor hint</button>`}<button class="text-button" data-action="reveal" ${paused ? "disabled" : ""}>Reveal answer</button>`}</div>${q.hint && !q.done ? `<div class="hint-panel">${q.position > 1 ? `<div><span>Before</span>${cardImage(q.position - 1)}</div>` : "<span>Top of deck</span>"}${q.position < 52 ? `<div><span>After</span>${cardImage(q.position + 1)}</div>` : "<span>Bottom of deck</span>"}</div>` : ""}<div class="session-bottom"><span>${stats.total} answered · ${active.runTarget ? sequenceResult(active, data.attempts).accuracy.toFixed(0) + "% first try" : (stats.eligibleTotal ? stats.accuracy.toFixed(0) + "%" : "—") + " independent"}</span></div>`,
   );
 }
 function newQuestion() {
+  if (active?.runTarget && q?.done && data.attempts.filter(a => a.sessionId === active!.id).length >= active.runTarget) { finish(true); return; }
   if (active && isSequence(active.mode) && q) sequenceSource = q.position;
   const direction: Direction =
     active && isSequence(active.mode) ? active.mode as SequenceDirection : data.settings.mode === "mixed"
@@ -185,7 +187,6 @@ function newQuestion() {
     direction,
     options: choices(position, direction),
     elapsed: 0,
-    advanceElapsed: 0,
     wrong: 0,
     hint: false,
     revealed: false,
@@ -211,7 +212,8 @@ function start(mode: Mode = data.settings.mode) {
     startedAt: Date.now(),
     endedAt: null,
     mode,
-    duration: data.settings.minutes * 60000,
+    duration: isSequence(mode) ? 0 : data.settings.minutes * 60000,
+    ...(isSequence(mode) ? {runTarget:52, startPosition:sequenceSource, elapsedMs:0, completed:false} : {}),
   };
   data.sessions.push(active);
   sessionElapsed = 0;
@@ -222,6 +224,7 @@ function start(mode: Mode = data.settings.mode) {
 }
 function persistAttempt() {
   if (!q || !active || q.firstCorrect === null) return;
+  if (active.runTarget) active.elapsedMs = sessionElapsed;
   const a: Attempt = {
     id: q.id,
     sessionId: active.id,
@@ -259,8 +262,10 @@ function answer(p: number) {
   if (p !== q.position) q.wrong++;
   else q.done = true;
   persistAttempt();
-  if (q.done) lastExposure.set(q.position, Date.now());
-  render();
+  if (q.done) {
+    lastExposure.set(q.position, Date.now());
+    newQuestion();
+  } else render();
 }
 function reveal() {
   if (!q || paused || q.done) return;
@@ -276,12 +281,14 @@ function reveal() {
   lastExposure.set(q.position, Date.now());
   render();
 }
-function finish() {
+function finish(completed = false) {
   if (!active) return;
   tick();
+  const session = active;
   const id = active.id;
   filter = isSequence(active.mode) ? "sequence" : "all";
   active.endedAt = Date.now();
+  if (active.runTarget) {active.elapsedMs = sessionElapsed; active.completed = completed;}
   save();
   active = null;
   q = null;
@@ -289,6 +296,10 @@ function finish() {
   const attempts = data.attempts.filter((a) => a.sessionId === id),
     s = summary(attempts);
   render();
+  if (session.runTarget) {
+    showDialog(`${runResults(session)}<button class="primary" data-action="summary-progress">View progress →</button>`);
+    return;
+  }
   showDialog(
     `<h2>Session results</h2><p>${s.total} questions answered in ${timer(sessionElapsed)} of active practice.</p><div class="summary-grid"><div><strong>${s.eligibleTotal ? s.accuracy.toFixed(0) + "%" : "—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median correct answer</span></div><div><strong>${s.wrong}</strong><span>First-answer misses</span></div><div><strong>${s.hints}</strong><span>Hints used</span></div></div><p class="muted">Results saved on this device. Unanswered questions are excluded.</p><button class="primary" data-action="summary-progress">View progress →</button>`,
   );
@@ -306,24 +317,20 @@ function tick() {
     }
     sessionElapsed += delta;
     if (q && !q.done) q.elapsed += delta;
-    else if (q && !q.revealed) q.advanceElapsed += delta;
   }
 }
 setInterval(() => {
   tick();
   if (!active) return;
-  if (sessionElapsed >= active.duration) {
+  if (!active.runTarget && sessionElapsed >= active.duration) {
     finish();
     return;
   }
-  if (!paused && !document.hidden && q?.done && !q.revealed && q.advanceElapsed >= 1100) {
-    newQuestion();
-  }
   const remain = document.querySelector("#remaining"),
     bar = document.querySelector<HTMLElement>("#session-bar");
-  if (remain) remain.textContent = timer(active.duration - sessionElapsed);
+  if (remain) remain.textContent = active.runTarget ? runTime(sessionElapsed) : timer(active.duration - sessionElapsed);
   if (bar)
-    bar.style.width = `${Math.min(100, (sessionElapsed / active.duration) * 100)}%`;
+    bar.style.width = `${active.runTarget ? data.attempts.filter(a => a.sessionId === active!.id && (a.id !== q?.id || q.done)).length / active.runTarget * 100 : Math.min(100, (sessionElapsed / active.duration) * 100)}%`;
 }, 200);
 document.addEventListener("visibilitychange", () => {
   if (active) {
@@ -357,7 +364,7 @@ function deckTabs() {
 }
 function deck() {
   if (deckMode === "quiz") {
-    chrome(`${deckTabs()}<section class="start-panel sequence-setup"><div class="segmented" aria-label="Sequence direction">${(["sequence-forward", "sequence-backward"] as SequenceDirection[]).map(dir => `<button data-sequence-direction="${dir}" class="${sequenceDirection === dir ? "selected" : ""}" aria-pressed="${sequenceDirection === dir}">${dir === "sequence-forward" ? "Forward →" : "← Backward"}</button>`).join("")}</div><label class="session-length">Start at<select id="sequence-start"><option value="beginning" ${sequenceStart === "beginning" ? "selected" : ""}>${sequenceDirection === "sequence-forward" ? "First card" : "Last card"}</option><option value="random" ${sequenceStart === "random" ? "selected" : ""}>Random position</option></select></label><label class="session-length" for="minutes">Session length<select id="minutes">${[1,3,5,10].map(n => `<option value="${n}" ${data.settings.minutes === n ? "selected" : ""}>${n} minutes</option>`).join("")}</select></label><button class="primary start" data-action="start-sequence" ${storageProblem ? "disabled" : ""}>Start sequence quiz <span>→</span></button><p class="start-note">Choose the ${sequenceDirection === "sequence-forward" ? "next" : "previous"} card. The sequence loops at the ends.</p></section>`);
+    chrome(`${deckTabs()}<section class="start-panel sequence-setup"><div class="segmented" aria-label="Sequence direction">${(["sequence-forward", "sequence-backward"] as SequenceDirection[]).map(dir => `<button data-sequence-direction="${dir}" class="${sequenceDirection === dir ? "selected" : ""}" aria-pressed="${sequenceDirection === dir}">${dir === "sequence-forward" ? "Forward →" : "← Backward"}</button>`).join("")}</div><label class="session-length">Start at<select id="sequence-start"><option value="beginning" ${sequenceStart === "beginning" ? "selected" : ""}>${sequenceDirection === "sequence-forward" ? "First card" : "Last card"}</option><option value="random" ${sequenceStart === "random" ? "selected" : ""}>Random position</option></select></label><button class="primary start" data-action="start-sequence" ${storageProblem ? "disabled" : ""}>Start full-deck run <span>→</span></button><p class="start-note">Choose the ${sequenceDirection === "sequence-forward" ? "next" : "previous"} card. 52 answers · timed run. Each wrong choice or reveal adds 5s to scored time.</p></section>`);
     return;
   }
   chrome(
@@ -455,9 +462,29 @@ function trend(attempts: Attempt[]): string {
     '<tr><td colspan="4">No practice in the last 14 days.</td></tr>'
   }</tbody></table></div></details></div>`;
 }
+function runResults(session: Session) {
+  const r = sequenceResult(session, data.attempts);
+  return `<h2>${r.complete ? "Deck completed" : "Run ended early"}</h2><p>${modeName(session.mode)} · ${r.total}/52 answered · start position ${session.startPosition}</p><div class="summary-grid"><div><strong>${runTime(r.elapsedMs)}</strong><span>Active time</span></div><div><strong>${r.accuracy.toFixed(0)}%</strong><span>First-answer accuracy</span></div><div><strong>${runTime(r.scoredMs)}</strong><span>Scored time</span></div><div><strong>+${r.penalties * 5}s</strong><span>${r.penalties} penalties</span></div></div><p class="muted">5 seconds per wrong selection or reveal. Paused time is excluded. ${r.complete ? "Completed runs count toward personal bests." : "Partial runs do not count toward personal bests."}</p>`;
+}
+function sequenceBests() {
+  return `<section class="report-section"><h2>Full-deck runs</h2><div class="summary-grid">${(["sequence-forward", "sequence-backward"] as SequenceDirection[]).filter(dir => filter === "sequence" || filter === dir).map(dir => {
+    const runs = data.sessions.filter(s => s.mode === dir && (period === "all" || s.startedAt >= Date.now() - Number(period) * 86400000)).map(s => ({s,r:sequenceResult(s,data.attempts)})).filter(x => x.r.complete);
+    const best = [...runs].sort((a,b) => a.r.scoredMs! - b.r.scoredMs!)[0];
+    const latest = runs.at(-1);
+    return `<div><span>${dir === "sequence-forward" ? "Forward" : "Backward"} · ${runs.length} completed</span><strong>${best ? runTime(best.r.scoredMs) : "—"}</strong><span>Best scored time</span>${best ? `<p class="muted compact">${runTime(best.r.elapsedMs)} raw · ${best.r.accuracy.toFixed(0)}% accuracy</p>` : ""}${latest ? `<p class="muted compact">Latest: ${runTime(latest.r.scoredMs)} · ${latest.r.accuracy.toFixed(0)}%</p>` : ""}</div>`;
+  }).join("")} </div></section>`;
+}
+function sequenceTrend() {
+  const runs = data.sessions.filter(s => (filter === "sequence" ? isSequence(s.mode) : s.mode === filter) && (period === "all" || s.startedAt >= Date.now() - Number(period) * 86400000))
+    .map(s => ({s,r:sequenceResult(s,data.attempts)})).filter(x => x.r.complete).slice(-20);
+  if (!runs.length) return '<p class="muted">Complete a full-deck run to start tracking speed and accuracy over time.</p>';
+  const max = Math.max(...runs.map(x => x.r.scoredMs!), 1000);
+  const point = (i: number, ms: number) => `${30 + i * 320 / Math.max(1,runs.length-1)},${125 - ms / max * 100}`;
+  return `<div class="chart run-trend"><div class="chart-title"><h2>Sequence speed over time</h2><span>Last ${runs.length} completed runs</span></div><p class="muted compact">Lower is faster. Blue: raw time · light blue: scored time.</p><svg viewBox="0 0 380 160" role="img" aria-label="Raw and penalty-adjusted completion times; exact times and accuracy appear below"><line x1="30" x2="350" y1="125" y2="125" stroke="#2c3e5a"/><polyline points="${runs.map((x,i)=>point(i,x.r.elapsedMs!)).join(" ")}" fill="none" stroke="#3979cb" stroke-width="2"/><polyline points="${runs.map((x,i)=>point(i,x.r.scoredMs!)).join(" ")}" fill="none" stroke="#b3d3ff" stroke-width="2"/>${runs.map((x,i)=>`<circle cx="${point(i,x.r.scoredMs!).split(",")[0]}" cy="${point(i,x.r.scoredMs!).split(",")[1]}" r="3" fill="#b3d3ff"><title>${fmtDate(x.s.startedAt)}: ${runTime(x.r.scoredMs)} scored, ${x.r.accuracy.toFixed(0)}% accuracy</title></circle>`).join("")}<text x="30" y="150" font-size="10" fill="#9aabc6">${fmtDate(runs[0].s.startedAt)}</text><text x="310" y="150" font-size="10" fill="#9aabc6">Latest</text></svg><div class="table-wrap"><table><thead><tr><th>Run</th><th>Raw</th><th>Scored</th><th>Accuracy</th></tr></thead><tbody>${[...runs].reverse().map(({s,r})=>`<tr><td>${fmtDate(s.startedAt)}<br/><small>${s.mode === "sequence-forward" ? "Forward" : "Backward"}</small></td><td>${runTime(r.elapsedMs)}</td><td>${runTime(r.scoredMs)}</td><td>${r.accuracy.toFixed(0)}%</td></tr>`).join("")}</tbody></table></div></div>`;
+}
 function progress() {
   const attempts = filtered(),
-    s = summary(attempts),
+    s = summary(filter.startsWith("sequence") ? attempts.map(a => ({...a,recentExposure:false})) : attempts),
     slow = attempts.filter(
       (a) =>
         a.firstCorrect &&
@@ -486,7 +513,7 @@ function progress() {
       )
       .join(
         "",
-      )}</select></label></div><div class="summary-grid stat-cards"><div><strong>${s.eligibleTotal ? s.accuracy.toFixed(0) + "%" : "—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median correct answer</span></div><div><strong>${s.total}</strong><span>Questions answered</span></div><div><strong>${slow.length ? Math.round((within / slow.length) * 100) + "%" : "—"}</strong><span>Within ${data.settings.speedTarget}s target</span></div></div>${!s.total ? '<div class="empty"><span>♧</span><h2>No practice results</h2><p>Practice results will appear here, with each direction tracked separately.</p><button class="primary" data-action="home">Go to practice →</button></div>' : `${trend(attempts)}<div class="report-notes"><span>${s.wrong} first-answer misses</span><span>${s.hints} questions with hints</span><span>${new Set(attempts.map((a) => a.position)).size}/52 cards practiced</span></div>`}<section class="report-section"><div class="chart-title"><h2>Per-card results</h2><span>Tap a card for details</span></div><p class="muted compact">${filter === "all" ? "Results combine both directions. Filter above to find a directional weakness." : filter === "sequence" ? "Forward and backward sequence results." : modeName(filter as Direction)} Timing excludes interrupted and recently exposed answers.</p><div class="table-wrap"><table class="deck-table"><thead><tr><th>Position / card</th><th>Answers</th><th>Accuracy</th><th>Median</th></tr></thead><tbody>${STACK.map(
+      )}</select></label></div><div class="summary-grid stat-cards"><div><strong>${s.eligibleTotal ? s.accuracy.toFixed(0) + "%" : "—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median correct answer</span></div><div><strong>${s.total}</strong><span>Questions answered</span></div><div><strong>${slow.length ? Math.round((within / slow.length) * 100) + "%" : "—"}</strong><span>Within ${data.settings.speedTarget}s target</span></div></div>${!s.total ? '<div class="empty"><span>♧</span><h2>No practice results</h2><p>Practice results will appear here, with each direction tracked separately.</p><button class="primary" data-action="home">Go to practice →</button></div>' : `${filter.startsWith("sequence") ? sequenceTrend() : trend(attempts)}<div class="report-notes"><span>${s.wrong} first-answer misses</span><span>${s.hints} questions with hints</span><span>${new Set(attempts.map((a) => a.position)).size}/52 cards practiced</span></div>`}${filter.startsWith("sequence") ? sequenceBests() : ""}<section class="report-section"><div class="chart-title"><h2>Per-card results</h2><span>Tap a card for details</span></div><p class="muted compact">${filter === "all" ? "Results combine both directions. Filter above to find a directional weakness." : filter === "sequence" ? "Forward and backward sequence results." : modeName(filter as Direction)} Timing excludes interrupted and recently exposed answers.</p><div class="table-wrap"><table class="deck-table"><thead><tr><th>Position / card</th><th>Answers</th><th>Accuracy</th><th>Median</th></tr></thead><tbody>${STACK.map(
       (_, i) => {
         const ss = summary(attempts.filter((a) => a.position === i + 1));
         return `<tr><td><button class="card-detail" data-position="${i + 1}"><span class="position-number">${i + 1}</span><span>${cardName(i + 1)}</span></button></td><td>${ss.total || "—"}</td><td><span class="accuracy ${ss.eligibleTotal && ss.accuracy < 75 ? "low" : ""}">${ss.eligibleTotal ? ss.accuracy.toFixed(0) + "%" : "—"}</span></td><td>${fmtTime(ss.medianMs)}</td></tr>`;
@@ -501,7 +528,8 @@ function progress() {
               const ss = summary(
                 attempts.filter((a) => a.sessionId === session.id),
               );
-              return `<div class="history-entry"><button class="history-row" data-session="${esc(session.id)}"><div><strong>${fmtDate(session.startedAt)} · ${new Date(session.startedAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}</strong><span>${modeName(session.mode)} · ${ss.total} answered</span></div><div><strong>${ss.eligibleTotal ? ss.accuracy.toFixed(0) + "%" : "—"}</strong><span>${fmtTime(ss.medianMs)}</span></div></button><button class="delete-session" data-delete-session="${esc(session.id)}" aria-label="Delete session from ${esc(fmtDate(session.startedAt))}">${uiIcon("trash")}</button></div>`;
+              const run = session.runTarget ? sequenceResult(session, data.attempts) : null;
+              return `<div class="history-entry"><button class="history-row" data-session="${esc(session.id)}"><div><strong>${fmtDate(session.startedAt)} · ${new Date(session.startedAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}</strong><span>${modeName(session.mode)} · ${run ? `${run.total}/52 · ${run.complete ? "complete" : "partial"}` : `${ss.total} answered`}</span></div><div><strong>${run ? run.accuracy.toFixed(0) + "%" : ss.eligibleTotal ? ss.accuracy.toFixed(0) + "%" : "—"}</strong><span>${run ? runTime(run.scoredMs) : fmtTime(ss.medianMs)}</span></div></button><button class="delete-session" data-delete-session="${esc(session.id)}" aria-label="Delete session from ${esc(fmtDate(session.startedAt))}">${uiIcon("trash")}</button></div>`;
             })
             .join(
               "",
@@ -672,7 +700,7 @@ function bind(root: ParentNode = app) {
       (b.onclick = () => {
         const session = data.sessions.find((s) => s.id === b.dataset.session)!;
         showDialog(
-          `<div class="eyebrow">${fmtDate(session.startedAt)}</div><h2>${modeName(session.mode)}</h2>${attemptList(data.attempts.filter((a) => a.sessionId === session.id).reverse())}<button class="text-button danger" data-delete-session="${esc(session.id)}">Delete session</button>`,
+          `<div class="eyebrow">${fmtDate(session.startedAt)}</div>${session.runTarget ? runResults(session) : `<h2>${modeName(session.mode)}</h2>`}${attemptList(data.attempts.filter((a) => a.sessionId === session.id).reverse())}<button class="text-button danger" data-delete-session="${esc(session.id)}">Delete session</button>`,
         );
       }),
   );
@@ -704,6 +732,7 @@ function bind(root: ParentNode = app) {
             const resume = paused;
             tick();
             paused = !resume;
+            if (active?.runTarget) {active.elapsedMs = sessionElapsed; save();}
             if (q && q.firstCorrect === null) q.interrupted = true;
             lastTick = performance.now();
             render();

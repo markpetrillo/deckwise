@@ -73,3 +73,5 @@ dialog{border-color:#304968;border-radius:18px;padding:28px 24px;color:#e8eef8;b
 .gallery-controls .round{margin:0;width:44px;height:44px;display:grid;place-items:center;padding:0}
 .gallery-controls span{text-align:center;margin:0}
 .deck-tabs{margin-top:20px}.sequence-setup{margin-top:16px}.sequence-position{display:block;color:#7f9abd;font-size:11px;margin-top:4px}
+
+.sequence-setup .start-note{margin-top:16px;line-height:1.7}.session-timer span:first-child{font-variant-numeric:tabular-nums}

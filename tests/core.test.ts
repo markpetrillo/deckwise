@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import {
   STACK,
   sequenceNeighbor,
+  sequenceResult,
   emptyData,
   choices,
   choose,
@@ -239,4 +240,16 @@ test("session deletion cannot remove an active or unknown session", () => {
   assert.deepEqual(validate(JSON.parse(JSON.stringify(d))),d);
   assert.equal(deleteSession(d,"seq"),true);
   assert.deepEqual(d.memory,{});
+});
+
+test("full-deck scores keep raw time, penalties, accuracy, and completion distinct", () => {
+ const s={id:"run",startedAt:1000,endedAt:2000,mode:"sequence-forward" as const,duration:0,runTarget:52,startPosition:1,elapsedMs:120000,completed:true};
+ const answers=Array.from({length:52},(_,i)=>attempt({id:String(i),sessionId:"run",position:i+1,direction:"sequence-forward"}));
+ assert.deepEqual(sequenceResult(s,answers),{total:52,accuracy:100,penalties:0,penaltyMs:0,elapsedMs:120000,scoredMs:120000,complete:true});
+ answers[0].wrong=2;answers[0].firstCorrect=false;answers[1].revealed=true;answers[1].firstCorrect=false;
+ const r=sequenceResult(s,answers);assert.equal(r.penalties,3);assert.equal(r.scoredMs,135000);assert.equal(r.accuracy,50/52*100);
+ assert.equal(sequenceResult({...s,completed:false},answers).complete,false);
+ assert.equal(sequenceResult(s,answers.slice(0,51)).complete,false);
+ const d=emptyData();d.sessions=[s];d.attempts=answers;assert.deepEqual(validate(d),d);
+ assert.throws(()=>validate({...d,sessions:[{...s,elapsedMs:-1}]}));
 });

@@ -55,6 +55,10 @@ export interface Session {
   endedAt: number | null;
   mode: Mode;
   duration: number;
+  runTarget?: number;
+  startPosition?: number;
+  elapsedMs?: number;
+  completed?: boolean;
 }
 export interface Memory {
   due: number;
@@ -88,6 +92,17 @@ export function emptyData(): Data {
       speedAdaptive: true,
     },
   };
+}
+export const SEQUENCE_PENALTY_MS = 5000;
+export function sequenceResult(session: Session, attempts: Attempt[]) {
+  const answers = attempts.filter(a => a.sessionId === session.id);
+  const correct = answers.filter(a => a.firstCorrect && !a.hint && !a.revealed).length;
+  const penalties = answers.reduce((sum, a) => sum + a.wrong + (a.revealed ? 1 : 0), 0);
+  const elapsedMs = session.elapsedMs ?? null;
+  const complete = session.runTarget === 52 && session.completed === true && answers.length === 52;
+  return {total:answers.length, accuracy:answers.length ? correct / answers.length * 100 : 0, penalties,
+    penaltyMs:penalties * SEQUENCE_PENALTY_MS, elapsedMs,
+    scoredMs:elapsedMs === null ? null : elapsedMs + penalties * SEQUENCE_PENALTY_MS, complete};
 }
 export function median(values: number[]): number | null {
   if (!values.length) return null;
@@ -262,7 +277,8 @@ export function validate(raw: unknown): Data {
       !finite(s.startedAt) ||
       !(s.endedAt === null || finite(s.endedAt)) ||
       !mode(s.mode) ||
-      !finite(s.duration)
+      !finite(s.duration) ||
+      (s.runTarget !== undefined && (!isSequence(s.mode) || s.runTarget !== 52 || !Number.isInteger(s.startPosition) || s.startPosition! < 1 || s.startPosition! > 52 || !finite(s.elapsedMs) || typeof s.completed !== "boolean"))
     )
       throw Error("Invalid session history.");
     sessionIds.add(s.id);

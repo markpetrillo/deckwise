@@ -50,7 +50,9 @@ Personal interface: navy palette, minimal deck/practice labels, and a clean Ace 
 
 Deckwise install icon: cobalt spade mark in a 5:7 playing-card silhouette, matching the header logo. SVG, 192 px, 512 px, maskable 512 px, and Apple 180 px assets.
 
-Correct answers automatically advance after a brief feedback interval. Pause freezes both timing and the transition; revealed answers wait for Next. Delete individual completed sessions from Progress using the trash control. Deletion removes their attempts from reports and rebuilds adaptive memory from the remaining history using the current settings.
+Correct answers advance immediately. Pause freezes active timing; revealed answers wait for Next. Delete individual completed sessions from Progress using the trash control. Deletion removes their attempts from reports and rebuilds adaptive memory from the remaining history using the current settings.
 
-Deck → Sequence quiz drills the next or previous card with five card choices. Start from the first/last card or a random position. Sequences loop at the deck ends. Pause, reveal, early finish, and automatic advancement work like position practice. Progress has separate sequence filters; these answers never change position-practice statistics or its adaptive schedule.
+Deck → Sequence quiz drills the next or previous card with five card choices. Start from the first/last card or a random position. A run ends after 52 answers, covering every card once (wrapping as needed). Raw active time excludes pauses; scored time adds 5 seconds per wrong selection or reveal. Partial runs stay in history but do not qualify for full-deck personal bests. Pause, reveal, early finish, and immediate advancement work like position practice. Progress has separate sequence filters; these answers never change position-practice statistics or its adaptive schedule.
 Install assets use versioned filenames to avoid cached older icons; the app identity and local progress storage stay the same.
+
+Progress → Sequence quiz shows separate forward/backward personal bests and the last 20 completed runs with raw time, scored time, and accuracy. Existing countdown-based sequence sessions remain available as legacy history; they are excluded from full-deck records.
