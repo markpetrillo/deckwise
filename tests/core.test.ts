@@ -4,6 +4,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   STACK,
+  sequenceNeighbor,
   emptyData,
   choices,
   choose,
@@ -222,4 +223,20 @@ test("session deletion cannot remove an active or unknown session", () => {
  const before = JSON.stringify(d);
  assert.equal(deleteSession(d, 'active'), false);assert.equal(deleteSession(d, 'missing'), false);
  assert.equal(JSON.stringify(d), before);
+});
+
+ test("sequence adjacency wraps correctly and has independent history", () => {
+  for (let p=1;p<=52;p++) {
+    assert.equal(sequenceNeighbor(p,"sequence-forward"),p===52?1:p+1);
+    assert.equal(sequenceNeighbor(p,"sequence-backward"),p===1?52:p-1);
+  }
+  const d=emptyData();
+  d.sessions.push({id:"seq",startedAt:1000,endedAt:2000,mode:"sequence-forward",duration:60000});
+  record(d,attempt({id:"seq-a",sessionId:"seq",direction:"sequence-forward"}));
+  assert.ok(d.memory[key(22,"sequence-forward")]);
+  assert.equal(d.memory[key(22,"card-number")],undefined);
+  assert.equal(d.memory[key(22,"sequence-backward")],undefined);
+  assert.deepEqual(validate(JSON.parse(JSON.stringify(d))),d);
+  assert.equal(deleteSession(d,"seq"),true);
+  assert.deepEqual(d.memory,{});
 });

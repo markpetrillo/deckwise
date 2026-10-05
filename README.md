@@ -51,3 +51,6 @@ Personal interface: navy palette, minimal deck/practice labels, and a clean Ace 
 Deckwise install icon: cobalt spade mark in a 5:7 playing-card silhouette, matching the header logo. SVG, 192 px, 512 px, maskable 512 px, and Apple 180 px assets.
 
 Correct answers automatically advance after a brief feedback interval. Pause freezes both timing and the transition; revealed answers wait for Next. Delete individual completed sessions from Progress using the trash control. Deletion removes their attempts from reports and rebuilds adaptive memory from the remaining history using the current settings.
+
+Deck → Sequence quiz drills the next or previous card with five card choices. Start from the first/last card or a random position. Sequences loop at the deck ends. Pause, reveal, early finish, and automatic advancement work like position practice. Progress has separate sequence filters; these answers never change position-practice statistics or its adaptive schedule.
+Install assets use versioned filenames to avoid cached older icons; the app identity and local progress storage stay the same.

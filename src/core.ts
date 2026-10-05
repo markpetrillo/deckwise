@@ -1,4 +1,9 @@
-export type Direction = "card-number" | "number-card";
+export type SequenceDirection = "sequence-forward" | "sequence-backward";
+export type Direction = "card-number" | "number-card" | SequenceDirection;
+export const isSequence = (mode: string) => mode.startsWith("sequence-");
+export function sequenceNeighbor(position: number, direction: SequenceDirection): number {
+  return ((position - 1 + (direction === "sequence-forward" ? 1 : -1) + 52) % 52) + 1;
+}
 export type Mode = Direction | "mixed";
 export const STACK =
   "4C 2H 7D 3C 4H 6D AS 5H 9S 2S QH 3D QC 8H 6S 5S 9H KC 2D JH 3S 8S 6H TC 5D KD 2C 3H 8D 5C KS JD 8C TS KH JC 7S TH AD 4S 7H 4D AC 9C JS QD 7C QS TD 6C AH 9D".split(
@@ -228,7 +233,7 @@ export function validate(raw: unknown): Data {
   const finite = (v: unknown) =>
     typeof v === "number" && Number.isFinite(v) && v >= 0;
   const mode = (v: unknown) =>
-    v === "card-number" || v === "number-card" || v === "mixed";
+    v === "card-number" || v === "number-card" || v === "mixed" || v === "sequence-forward" || v === "sequence-backward";
   if (
     d.version !== 1 ||
     !Array.isArray(d.attempts) ||
@@ -237,7 +242,7 @@ export function validate(raw: unknown): Data {
     typeof d.memory !== "object" ||
     Array.isArray(d.memory) ||
     !d.settings ||
-    !mode(d.settings.mode) ||
+    (!mode(d.settings.mode) || isSequence(d.settings.mode)) ||
     !finite(d.settings.minutes) ||
     d.settings.minutes < 1 ||
     d.settings.minutes > 60 ||
@@ -271,7 +276,7 @@ export function validate(raw: unknown): Data {
       !Number.isInteger(a.position) ||
       a.position < 1 ||
       a.position > 52 ||
-      !["card-number", "number-card"].includes(a.direction) ||
+      !["card-number", "number-card", "sequence-forward", "sequence-backward"].includes(a.direction) ||
       !finite(a.at) ||
       !Number.isInteger(a.wrong) ||
       a.wrong < 0 ||
@@ -292,7 +297,7 @@ export function validate(raw: unknown): Data {
   }
   for (const [k, m] of Object.entries(d.memory)) {
     if (
-      !/^(card-number|number-card):([1-9]|[1-4][0-9]|5[0-2])$/.test(k) ||
+      !/^(card-number|number-card|sequence-forward|sequence-backward):([1-9]|[1-4][0-9]|5[0-2])$/.test(k) ||
       !m ||
       !["due", "intervalDays", "successes", "failures", "slow"].every((f) =>
         finite((m as unknown as Record<string, unknown>)[f]),

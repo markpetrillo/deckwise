@@ -67,3 +67,9 @@ dialog{border-color:#304968;border-radius:18px;padding:28px 24px;color:#e8eef8;b
 @media(max-width:380px){.shell{padding-left:18px;padding-right:18px}.header{height:70px}.brand{font-size:24px}.stack-label{display:none}.session-top{padding-top:15px;gap:8px;min-height:72px}.session-top .eyebrow{font-size:10px}.session-timer{display:grid;gap:3px;min-width:85px;padding:6px 9px;min-height:52px}.session-timer span:first-child{font-size:19px}.session-timer span:last-child{font-size:11px}.end-session{width:72px;min-height:52px;font-size:11px}.answers{gap:6px}.segmented button{font-size:11px}.start-panel{padding:14px}.mini-stats strong{font-size:22px}.mini-stats>div{padding:12px 8px}.history-row strong{font-size:11px}}
 @media(max-height:740px){.header{height:66px}.question-stage{min-height:204px;padding-top:12px}.prompt-card{width:130px;height:182px}.feedback{height:40px;min-height:40px;margin:5px 0 3px}.practice-actions{margin-top:10px}.session-bottom{margin-top:10px;padding-top:12px}.gallery-card{width:190px;margin:12px auto}.gallery-slide{padding-top:12px}}
 @media(min-width:650px){.shell{padding-left:40px;padding-right:40px}.question-stage{min-height:308px}.prompt-card{width:190px;height:266px}.gallery-card{width:260px}}
+
+/* Deck navigation must not inherit the header gear alignment. */
+.gallery-controls{display:grid;grid-template-columns:44px minmax(0,1fr) 44px;align-items:center;gap:16px;width:min(100%,300px)}
+.gallery-controls .round{margin:0;width:44px;height:44px;display:grid;place-items:center;padding:0}
+.gallery-controls span{text-align:center;margin:0}
+.deck-tabs{margin-top:20px}.sequence-setup{margin-top:16px}.sequence-position{display:block;color:#7f9abd;font-size:11px;margin-top:4px}
