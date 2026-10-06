@@ -25,6 +25,7 @@ import {
 } from "./core";
 import { cardImage, numberCard } from "./cards";
 import { uiIcon } from "./icons";
+import { sessionTrend } from "./reporting";
 const app = document.querySelector<HTMLDivElement>("#app")!;
 const STORE = "deckwise.v1";
 let storageProblem = "";
@@ -428,42 +429,24 @@ function filtered() {
   );
 }
 function trend(attempts: Attempt[]): string {
-  const days = Array.from({ length: 14 }, (_, i) => {
-    const date = new Date();
-    date.setDate(date.getDate() - (13 - i));
-    date.setHours(0, 0, 0, 0);
-    const end = new Date(date);
-    end.setDate(end.getDate() + 1);
-    return {
-      at: date.getTime(),
-      s: summary(
-        attempts.filter((a) => a.at >= date.getTime() && a.at < end.getTime()),
-      ),
-    };
-  });
-  const points = days.map((d, i) => ({
-    x: 26 + i * 25,
-    y: 119 - d.s.accuracy * 0.9,
-    ...d,
-  }));
-  return `<div class="chart"><div class="chart-title"><h2>Accuracy over time</h2><span>Last 14 days</span></div><svg viewBox="0 0 380 160" role="img" aria-label="Independent accuracy by day for the last 14 days. Exact values follow below."><line x1="26" x2="352" y1="29" y2="29" stroke="#2c3e5a" stroke-dasharray="3 4"/><line x1="26" x2="352" y1="74" y2="74" stroke="#2c3e5a" stroke-dasharray="3 4"/><line x1="26" x2="352" y1="119" y2="119" stroke="#2c3e5a"/><text x="3" y="32" font-size="9" fill="#9aabc6">100</text><text x="8" y="78" font-size="9" fill="#9aabc6">50</text>${points
-    .filter((p) => p.s.eligibleTotal)
-    .map(
-      (p) =>
-        `<line x1="${p.x}" x2="${p.x}" y1="119" y2="${p.y}" stroke="#3c608e" stroke-width="12"/><circle cx="${p.x}" cy="${p.y}" r="4" fill="#92b9ed"><title>${fmtDate(p.at)}: ${p.s.accuracy.toFixed(0)}%, ${p.s.total} answers</title></circle>`,
-    )
-    .join(
-      "",
-    )}<text x="26" y="145" font-size="10" fill="#9aabc6">${fmtDate(days[0].at)}</text><text x="323" y="145" font-size="10" fill="#9aabc6">Today</text></svg><details><summary>Daily accuracy &amp; speed</summary><div class="table-wrap"><table><thead><tr><th>Date</th><th>Answers</th><th>Accuracy</th><th>Median</th></tr></thead><tbody>${
-    days
-      .filter((d) => d.s.total)
-      .map(
-        (d) =>
-          `<tr><td>${fmtDate(d.at)}</td><td>${d.s.total}</td><td>${d.s.accuracy.toFixed(0)}%</td><td>${fmtTime(d.s.medianMs)}</td></tr>`,
-      )
-      .join("") ||
-    '<tr><td colspan="4">No practice in the last 14 days.</td></tr>'
-  }</tbody></table></div></details></div>`;
+  const sessions = sessionTrend(data.sessions, attempts);
+  if (!sessions.length) return "";
+  const maxSeconds = Math.max(1, Math.ceil(Math.max(...sessions.map(s => (s.stats.medianMs ?? 0) / 1000))));
+  const points = sessions.map((s,i) => ({...s, x:sessions.length === 1 ? 190 : 42 + i * 296 / (sessions.length-1)}));
+  const accuracyY = (accuracy: number) => 142 - accuracy * 1.06;
+  const speedY = (ms: number) => 142 - ms / 1000 / maxSeconds * 106;
+  const path = (metric: "accuracy" | "speed") => {
+    let gap = true;
+    return points.map(p => {
+      const value = metric === "accuracy" ? p.stats.eligibleTotal ? p.stats.accuracy : null : p.stats.medianMs;
+      if (value === null) {gap = true; return "";}
+      const point = `${gap ? "M" : "L"}${p.x},${metric === "accuracy" ? accuracyY(value) : speedY(value)}`;
+      gap = false;
+      return point;
+    }).join(" ");
+  };
+  const label = (s: Session) => esc(new Date(s.startedAt).toLocaleString(undefined,{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}));
+  return `<div class="chart session-trend"><div class="chart-title"><h2>Accuracy &amp; speed</h2><span>Last ${sessions.length} sessions</span></div><div class="trend-legend"><span class="accuracy-key">Accuracy (%)</span><span class="speed-key">Median correct (s)</span></div><svg viewBox="0 0 380 185" role="img" aria-label="Session accuracy on the left percent axis and median correct-answer time on the right seconds axis. Exact session values follow below."><text x="8" y="19" font-size="10" fill="#79b7ff">%</text><text x="350" y="19" font-size="10" fill="#d1b6ff">sec</text>${[0,50,100].map(n => `<line x1="42" x2="338" y1="${accuracyY(n)}" y2="${accuracyY(n)}" stroke="#2c3e5a" stroke-dasharray="3 4"/><text x="30" y="${accuracyY(n)+3}" text-anchor="end" font-size="10" fill="#79b7ff">${n}</text><text x="350" y="${accuracyY(n)+3}" font-size="10" fill="#d1b6ff">${Number((maxSeconds*n/100).toFixed(1))}</text>`).join("")}<path d="${path("accuracy")}" fill="none" stroke="#79b7ff" stroke-width="2.5"/><path d="${path("speed")}" fill="none" stroke="#d1b6ff" stroke-width="2.5" stroke-dasharray="5 4"/>${points.map(p => `${p.stats.eligibleTotal ? `<circle cx="${p.x}" cy="${accuracyY(p.stats.accuracy)}" r="4" fill="#79b7ff"><title>${label(p.session)}: ${p.stats.accuracy.toFixed(0)}% accuracy</title></circle>` : ""}${p.stats.medianMs !== null ? `<circle cx="${p.x}" cy="${speedY(p.stats.medianMs)}" r="4" fill="#d1b6ff"><title>${label(p.session)}: ${fmtTime(p.stats.medianMs)} median correct answer</title></circle>` : ""}`).join("")}<text x="42" y="171" font-size="10" fill="#9aabc6">Oldest</text><text x="338" y="171" text-anchor="end" font-size="10" fill="#9aabc6">Newest</text></svg><p class="muted compact trend-note">Each point is one session. Higher accuracy and fewer seconds indicate improvement.</p><details><summary>Session accuracy &amp; speed</summary><div class="table-wrap"><table><thead><tr><th>Session</th><th>Answers</th><th>Accuracy</th><th>Median</th></tr></thead><tbody>${[...sessions].reverse().map(({session,stats}) => `<tr><td>${label(session)}<br/><small>${session.duration / 60000} min · ${modeName(session.mode)}</small></td><td>${stats.total}</td><td>${stats.eligibleTotal ? stats.accuracy.toFixed(0)+"%" : "—"}</td><td>${fmtTime(stats.medianMs)}</td></tr>`).join("")}</tbody></table></div></details></div>`;
 }
 function runResults(session: Session) {
   const r = sequenceResult(session, data.attempts);
