@@ -13,6 +13,7 @@ import {
   choose,
   record,
   deleteSession,
+  restoreSession,
   summary,
   validate,
   key,
@@ -531,20 +532,43 @@ function progress() {
                 attempts.filter((a) => a.sessionId === session.id),
               );
               const run = session.runTarget ? sequenceResult(session, data.attempts) : null;
-              return `<div class="history-entry"><button class="history-row" data-session="${esc(session.id)}"><div><strong>${fmtDate(session.startedAt)} · ${new Date(session.startedAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}</strong><span>${modeName(session.mode)} · ${run ? `${run.total}/52 · ${run.complete ? "complete" : "partial"}` : `${ss.total} answered`}</span></div><div><strong>${run ? run.accuracy.toFixed(0) + "%" : ss.eligibleTotal ? ss.accuracy.toFixed(0) + "%" : "—"}</strong><span>${run ? runTime(run.scoredMs) : fmtTime(ss.medianMs)}</span></div></button><button class="delete-session" data-delete-session="${esc(session.id)}" aria-label="Delete session from ${esc(fmtDate(session.startedAt))}">${uiIcon("trash")}</button></div>`;
+              return `<div class="history-entry"><button class="history-row" data-session="${esc(session.id)}"><div><strong>${fmtDate(session.startedAt)} · ${new Date(session.startedAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}</strong><span>${modeName(session.mode)} · ${run ? `${run.total}/52 · ${run.complete ? "complete" : "partial"}` : `${session.duration / 60000} min · ${ss.total} answered`}</span></div><div><strong>${run ? run.accuracy.toFixed(0) + "%" : ss.eligibleTotal ? ss.accuracy.toFixed(0) + "%" : "—"}</strong><span>${run ? runTime(run.scoredMs) : fmtTime(ss.medianMs)}</span></div></button><button class="delete-session" data-delete-session="${esc(session.id)}" aria-label="Delete session from ${esc(fmtDate(session.startedAt))}">${uiIcon("trash")}</button></div>`;
             })
             .join(
               "",
             )}</div>${sessions.length > historyLimit ? '<button class="text-button" data-action="more-history">Show more sessions</button>' : ""}`
         : '<p class="muted">No sessions in this period.</p>'
-    }</section><div class="export-row"><button class="text-button" data-action="export">↓ Export backup</button><button class="text-button" data-action="csv">↓ Export results CSV</button></div><p class="footnote">Independent accuracy excludes recent exposure; hints and reveals count as failures. Timing also excludes interruptions. Multiple choice measures recognition; fast guesses can still be correct.</p>`,
+    }</section>${recentlyDeleted()}<div class="export-row"><button class="text-button" data-action="export">↓ Export backup</button><button class="text-button" data-action="csv">↓ Export results CSV</button></div><p class="footnote">Independent accuracy excludes recent exposure; hints and reveals count as failures. Timing also excludes interruptions. Multiple choice measures recognition; fast guesses can still be correct.</p>`,
   );
+}
+function recentlyDeleted() {
+  const deleted = [...(data.deletedSessions ?? [])].sort((a,b) => b.deletedAt-a.deletedAt);
+  if (!deleted.length) return "";
+  return `<details class="report-section deleted-history" open><summary>Recently deleted (${deleted.length})</summary><p class="muted compact">Excluded from all statistics. Restore a session to include it again.</p>${deleted.map(({session, attempts}) => `<div class="history-entry"><div class="deleted-session-info"><strong>${fmtDate(session.startedAt)} · ${new Date(session.startedAt).toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"})}</strong><span>${modeName(session.mode)} · ${session.runTarget ? attempts.length + "/52" : session.duration / 60000 + " min · " + attempts.length + " answered"}</span></div><button class="secondary restore-session" data-restore-session="${esc(session.id)}">Restore</button></div>`).join("")}</details>`;
+}
+function confirmRestoreSession(id: string) {
+  if (active || storageConflict || storageProblem) return;
+  const old = data;
+  const candidate = validate(JSON.parse(JSON.stringify(data)));
+  const session = candidate.deletedSessions?.find(d => d.session.id === id)?.session;
+  if (!session || !restoreSession(candidate,id)) return;
+  data = candidate;
+  if (!save()) {
+    data = old;
+    showDialog('<h2>Session not restored</h2><p>Storage could not be updated. The deleted session was retained for recovery.</p>');
+    return;
+  }
+  filter = isSequence(session.mode) ? "sequence" : "all";
+  period = "all";
+  recent = [];
+  lastExposure.clear();
+  render();
 }
 function requestDeleteSession(id: string) {
   const session = data.sessions.find(s => s.id === id);
   if (!session || active || storageProblem) return;
   const count = data.attempts.filter(a => a.sessionId === id).length;
-  showDialog(`<h2>Delete session?</h2><p>${esc(fmtDate(session.startedAt))} · ${count} answers</p><p>This removes its answers from all reports and rebuilds the review schedule from the remaining history.</p><div class="dialog-actions"><button class="secondary" data-action="close-dialog">Cancel</button><button class="primary delete-confirm" data-confirm-delete="${esc(id)}">Delete session</button></div>`);
+  showDialog(`<h2>Delete session?</h2><p>${esc(fmtDate(session.startedAt))} · ${count} answers</p><p>This excludes its answers from reports and rebuilds the review schedule. You can restore it from Recently deleted.</p><div class="dialog-actions"><button class="secondary" data-action="close-dialog">Cancel</button><button class="primary delete-confirm" data-confirm-delete="${esc(id)}">Delete session</button></div>`);
 }
 function confirmDeleteSession(id: string) {
   if (active || storageConflict || storageProblem) return;
@@ -673,6 +697,7 @@ function route(next: typeof view) {
   window.scrollTo(0, 0);
 }
 function bind(root: ParentNode = app) {
+  root.querySelectorAll<HTMLElement>("[data-restore-session]").forEach(b => b.onclick = () => confirmRestoreSession(b.dataset.restoreSession!));
   root.querySelectorAll<HTMLElement>("[data-deck-mode]").forEach(b => b.onclick = () => {deckMode = b.dataset.deckMode as typeof deckMode; render();});
   root.querySelectorAll<HTMLElement>("[data-sequence-direction]").forEach(b => b.onclick = () => {sequenceDirection = b.dataset.sequenceDirection as SequenceDirection; render();});
   root.querySelector<HTMLSelectElement>("#sequence-start")?.addEventListener("change", e => {sequenceStart = (e.target as HTMLSelectElement).value;});
@@ -702,7 +727,7 @@ function bind(root: ParentNode = app) {
       (b.onclick = () => {
         const session = data.sessions.find((s) => s.id === b.dataset.session)!;
         showDialog(
-          `<div class="eyebrow">${fmtDate(session.startedAt)}</div>${session.runTarget ? runResults(session) : `<h2>${modeName(session.mode)}</h2>`}${attemptList(data.attempts.filter((a) => a.sessionId === session.id).reverse())}<button class="text-button danger" data-delete-session="${esc(session.id)}">Delete session</button>`,
+          `<div class="eyebrow">${fmtDate(session.startedAt)}</div>${session.runTarget ? runResults(session) : `<h2>${modeName(session.mode)}</h2><p>${session.duration / 60000}-minute session</p>`}${attemptList(data.attempts.filter((a) => a.sessionId === session.id).reverse())}<button class="text-button danger" data-delete-session="${esc(session.id)}">Delete session</button>`,
         );
       }),
   );

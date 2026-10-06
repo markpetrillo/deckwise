@@ -72,6 +72,7 @@ export interface Data {
   attempts: Attempt[];
   sessions: Session[];
   memory: Record<string, Memory>;
+  deletedSessions?: {session: Session; attempts: Attempt[]; deletedAt: number}[];
   settings: {
     mode: Mode;
     minutes: number;
@@ -161,19 +162,32 @@ export function record(data: Data, attempt: Attempt): void {
     slow: slow ? Math.min(5, prev.slow + 1) : Math.max(0, prev.slow - 1),
   };
 }
-/** Remove a completed session and replay remaining evidence into the review schedule. */
+/** Rebuild the scheduler from currently included evidence. Deleted evidence stays out. */
+function rebuildMemory(data: Data) {
+  const rebuilt = emptyData();
+  rebuilt.settings = {...data.settings};
+  for (const a of [...data.attempts].sort((a,b) => a.at-b.at)) record(rebuilt,a);
+  data.attempts = rebuilt.attempts;
+  data.memory = rebuilt.memory;
+}
 export function deleteSession(data: Data, sessionId: string): boolean {
   const session = data.sessions.find(s => s.id === sessionId);
   if (!session || session.endedAt === null) return false;
-  const rebuilt = emptyData();
-  rebuilt.settings = { ...data.settings };
-  rebuilt.sessions = data.sessions.filter(s => s.id !== sessionId);
-  const remaining = data.attempts.filter(a => a.sessionId !== sessionId)
-    .sort((a, b) => a.at - b.at);
-  for (const attempt of remaining) record(rebuilt, attempt);
-  data.sessions = rebuilt.sessions;
-  data.attempts = rebuilt.attempts;
-  data.memory = rebuilt.memory;
+  (data.deletedSessions ??= []).push({session, attempts:data.attempts.filter(a => a.sessionId === sessionId), deletedAt:Date.now()});
+  data.sessions = data.sessions.filter(s => s.id !== sessionId);
+  data.attempts = data.attempts.filter(a => a.sessionId !== sessionId);
+  rebuildMemory(data);
+  return true;
+}
+export function restoreSession(data: Data, sessionId: string): boolean {
+  const deleted = data.deletedSessions?.find(d => d.session.id === sessionId);
+  if (!deleted || data.sessions.some(s => s.id === sessionId) || deleted.attempts.some(a => data.attempts.some(existing => existing.id === a.id))) return false;
+  data.sessions.push(deleted.session);
+  data.sessions.sort((a,b) => a.startedAt-b.startedAt);
+  data.attempts.push(...deleted.attempts);
+  data.deletedSessions = data.deletedSessions!.filter(d => d.session.id !== sessionId);
+  if (!data.deletedSessions.length) delete data.deletedSessions;
+  rebuildMemory(data);
   return true;
 }
 export function choose(
@@ -320,6 +334,20 @@ export function validate(raw: unknown): Data {
       )
     )
       throw Error("Invalid review schedule.");
+  }
+  if (d.deletedSessions !== undefined) {
+    if (!Array.isArray(d.deletedSessions)) throw Error("Invalid deleted history.");
+    const base = {...d, deletedSessions:undefined, sessions:[], attempts:[], memory:{}};
+    for (const entry of d.deletedSessions) {
+      if (!entry || !finite(entry.deletedAt) || !entry.session || entry.session.endedAt === null || !Array.isArray(entry.attempts)) throw Error("Invalid deleted history.");
+      validate({...base, sessions:[entry.session], attempts:entry.attempts});
+      if (sessionIds.has(entry.session.id)) throw Error("Duplicate deleted session.");
+      sessionIds.add(entry.session.id);
+      for (const attempt of entry.attempts) {
+        if (attemptIds.has(attempt.id)) throw Error("Duplicate deleted attempt.");
+        attemptIds.add(attempt.id);
+      }
+    }
   }
   return JSON.parse(JSON.stringify(d));
 }

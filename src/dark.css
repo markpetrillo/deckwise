@@ -75,3 +75,5 @@ dialog{border-color:#304968;border-radius:18px;padding:28px 24px;color:#e8eef8;b
 .deck-tabs{margin-top:20px}.sequence-setup{margin-top:16px}.sequence-position{display:block;color:#7f9abd;font-size:11px;margin-top:4px}
 
 .sequence-setup .start-note{margin-top:16px;line-height:1.7}.session-timer span:first-child{font-variant-numeric:tabular-nums}
+
+.deleted-history>summary{font-size:17px;font-weight:600;min-height:44px;cursor:pointer}.deleted-session-info{flex:1;min-width:0;padding:10px 6px}.deleted-session-info strong{display:block;font-size:12px}.deleted-session-info span{display:block;font-size:11px;color:var(--muted);line-height:1.5;margin-top:5px}.restore-session{min-height:44px;padding:8px 12px;font-size:12px;flex-shrink:0}

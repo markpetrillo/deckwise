@@ -11,6 +11,7 @@ import {
   choose,
   record,
   deleteSession,
+  restoreSession,
   summary,
   validate,
   key,
@@ -210,7 +211,8 @@ test("session deletion rebuilds reports and memory using only retained answers",
  const expected = emptyData();expected.sessions.push(sessions[1], sessions[2]);
  [realAnswer, otherAnswer].forEach(a => record(expected, a));
  assert.ok(deleteSession(d, 'test-session'));
- assert.deepEqual(d, expected);
+ assert.deepEqual({...d, deletedSessions:undefined}, {...expected, deletedSessions:undefined});
+ assert.equal(d.deletedSessions?.[0].attempts[0].id,"test-answer");
  assert.equal(summary(d.attempts).accuracy, 100);
  assert.deepEqual(validate(JSON.parse(JSON.stringify(d))), d);
  const memory = JSON.stringify(d.memory);
@@ -252,4 +254,26 @@ test("full-deck scores keep raw time, penalties, accuracy, and completion distin
  assert.equal(sequenceResult(s,answers.slice(0,51)).complete,false);
  const d=emptyData();d.sessions=[s];d.attempts=answers;assert.deepEqual(validate(d),d);
  assert.throws(()=>validate({...d,sessions:[{...s,elapsedMs:-1}]}));
+});
+
+test("deleted sessions survive backup and restore full chronological evidence", () => {
+ const d=emptyData();
+ d.sessions=[{id:"s1",startedAt:1,endedAt:2,mode:"card-number",duration:60000},{id:"s2",startedAt:3,endedAt:4,mode:"card-number",duration:180000}];
+ record(d,attempt({id:"a1",sessionId:"s1",at:10}));record(d,attempt({id:"a2",sessionId:"s2",at:20,firstCorrect:false,wrong:2}));
+ const original=validate(d);assert.equal(deleteSession(d,"s1"),true);assert.equal(deleteSession(d,"s2"),true);
+ assert.equal(d.attempts.length,0);assert.deepEqual(d.memory,{});
+ const saved=validate(JSON.parse(JSON.stringify(d)));
+ assert.equal(restoreSession(saved,"s2"),true);assert.equal(restoreSession(saved,"s1"),true);
+ assert.deepEqual(saved,original);assert.equal(restoreSession(saved,"s1"),false);
+ assert.equal(deleteSession(saved,"s1"),true);assert.equal(deleteSession(saved,"s1"),false);
+ assert.equal(saved.deletedSessions?.length,1);
+});
+test("damaged and conflicting deleted history is rejected", () => {
+ const d=emptyData();d.sessions=[{id:"s",startedAt:1,endedAt:2,mode:"card-number",duration:60000}];record(d,attempt({sessionId:"s"}));deleteSession(d,"s");
+ assert.deepEqual(validate(d),d);
+ assert.throws(()=>validate({...d,deletedSessions:{}}));
+ assert.throws(()=>validate({...d,deletedSessions:[...d.deletedSessions!,...d.deletedSessions!]}));
+ assert.throws(()=>validate({...d,sessions:[d.deletedSessions![0].session]}));
+ const bad=JSON.parse(JSON.stringify(d));bad.deletedSessions[0].attempts[0].sessionId="missing";assert.throws(()=>validate(bad));
+ const active=JSON.parse(JSON.stringify(d));active.deletedSessions[0].session.endedAt=null;assert.throws(()=>validate(active));
 });
