@@ -278,11 +278,30 @@ test("damaged and conflicting deleted history is rejected", () => {
  const active=JSON.parse(JSON.stringify(d));active.deletedSessions[0].session.endedAt=null;assert.throws(()=>validate(active));
 });
 
-import {sessionTrend} from "../src/reporting";
+import {sessionTrend, directionComparison} from "../src/reporting";
 test("position trend separates same-day sessions and respects filtered evidence", () => {
  const sessions=[{id:"first",startedAt:100,endedAt:101,mode:"card-number" as const,duration:300000},{id:"second",startedAt:200,endedAt:201,mode:"mixed" as const,duration:60000},{id:"empty",startedAt:300,endedAt:301,mode:"card-number" as const,duration:60000},{id:"seq",startedAt:400,endedAt:401,mode:"sequence-forward" as const,duration:0}];
  const a=[attempt({id:"a",sessionId:"first",elapsedMs:2000}),attempt({id:"b",sessionId:"first",firstCorrect:false,wrong:1}),attempt({id:"c",sessionId:"second",elapsedMs:6000}),attempt({id:"d",sessionId:"second",elapsedMs:1000,interrupted:true}),attempt({id:"seq-a",sessionId:"seq",direction:"sequence-forward"})];
  const trend=sessionTrend(sessions,a);assert.equal(trend.length,2);assert.equal(trend[0].stats.accuracy,50);assert.equal(trend[0].stats.medianMs,2000);assert.equal(trend[1].stats.medianMs,6000);
  assert.equal(sessionTrend(sessions,a,1)[0].session.id,"second");assert.deepEqual(sessionTrend(sessions,a.filter(x=>x.sessionId==="first")).map(x=>x.session.id),["first"]);
  const missing=sessionTrend(sessions,[attempt({sessionId:"first",recentExposure:true})])[0];assert.equal(missing.stats.eligibleTotal,0);assert.equal(missing.stats.medianMs,null);
+});
+
+const comparisonAnswers = (direction: "card-number" | "number-card", correct: number, ms: number) => Array.from({length:40},(_,i) => attempt({id:direction+i,sessionId:direction+Math.floor(i/20),position:i%20+1,direction,at:i,firstCorrect:i%10<correct,wrong:i%10<correct?0:1,elapsedMs:ms}));
+test("direction focus prioritizes shared-card accuracy and excludes small or unmatched samples", () => {
+ const c=comparisonAnswers("card-number",6,2000),n=comparisonAnswers("number-card",9,4000);
+ const r=directionComparison([...c,...n]);assert.equal(r.focus,"card-number");assert.equal(r.reason,"accuracy");assert.equal(r.accuracyGap,30);
+ assert.equal(directionComparison([...c.slice(0,10),...n]).reason,"insufficient");
+ assert.equal(directionComparison([...c.map(a=>({...a,sessionId:"one"})),...n]).reason,"insufficient");
+ assert.equal(directionComparison([...c,...n.map(a=>({...a,position:a.position+20}))]).reason,"insufficient");
+ const repeated=c.map(a=>({...a,recentExposure:true}));assert.equal(directionComparison([...repeated,...n]).card.eligibleTotal,0);
+});
+test("direction speed focus requires enough clean timing and identifies tradeoffs", () => {
+ const c=comparisonAnswers("card-number",9,5000),n=comparisonAnswers("number-card",9,3000);
+ assert.equal(directionComparison([...c,...n]).reason,"speed");assert.equal(directionComparison([...c,...n]).focus,"card-number");
+ assert.equal(directionComparison([...c.map(a=>({...a,interrupted:true})),...n]).reason,"balanced");
+ assert.equal(directionComparison([...c.map(a=>({...a,elapsedMs:3500})),...n]).reason,"balanced");
+ const accurate=comparisonAnswers("card-number",10,5000),fast=comparisonAnswers("number-card",9,3000).map((a,i)=>({...a,firstCorrect:i!==0&&i!==20,wrong:i===0||i===20?1:0}));
+ const trade=directionComparison([...accurate,...fast]);assert.equal(trade.reason,"tradeoff");assert.equal(trade.focus,null);
+ const many=[...Array.from({length:150},(_,i)=>({...c[i%40],id:String(i),at:i}))];assert.equal(directionComparison(many).cardCount,100);
 });
