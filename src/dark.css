@@ -83,3 +83,23 @@ dialog{border-color:#304968;border-radius:18px;padding:28px 24px;color:#e8eef8;b
 .trend-legend .speed-key:before{border-top-style:solid}.position-directions{margin:0 0 20px}.direction-comparison>.chart-title{flex-wrap:wrap;gap:5px}.direction-comparison>.chart-title>span{font-size:10px}.direction-cards{margin-top:14px;gap:10px}.direction-card h3{font-size:13px;margin:0 0 14px;letter-spacing:0}.direction-cards .direction-speed{font-size:23px;font-weight:600;margin-top:14px;color:#d1b6ff}.direction-cards .focus-direction{border-color:#6c97ce}.direction-cards button{width:100%;padding:8px;min-height:44px;font-size:12px;margin-top:8px}.practice-focus{border:1px solid var(--line);border-radius:12px;padding:16px;margin-top:12px;background:#111f35}.practice-focus strong{font-size:13px}.practice-focus p{font-size:12px;line-height:1.65;margin:8px 0}.practice-focus small{font-size:10px;color:var(--muted);line-height:1.5;display:block}@media(max-width:380px){.direction-cards>div{padding:14px 10px}.direction-card h3{font-size:12px}}
 
 .practice-focus p{color:#c1d2e8}.direction-cards .focus-direction{box-shadow:inset 0 0 0 1px #6c97ce}
+
+/* Practice start: equal toggle segments, restrained panel, scoped result window. */
+.practice-home{padding:20px;border-radius:20px;background:linear-gradient(145deg,#13223a,#101d32);border-color:#2b4160;box-shadow:0 8px 24px #02091418}
+.practice-toggle{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px;padding:5px;border:1px solid #243750;background:#0b1628;border-radius:14px}
+.practice-toggle button{min-width:0;min-height:52px;padding:10px 5px;font-size:12px;white-space:nowrap;font-weight:500;color:#9fb1ca;border-radius:10px;transition:background .15s,color .15s}
+.practice-toggle button.selected{background:#214166;color:#f1f6ff;box-shadow:inset 0 0 0 1px #345980,0 2px 5px #02091444}
+.practice-home .session-length{margin-top:22px;font-size:13px;color:#b4c5dd}.practice-home .session-length select{background:#182b45;border-color:#344b69;border-radius:12px}
+.practice-home .start{border-radius:12px;min-height:54px;margin-top:20px;font-size:15px;background:#2869b7}.practice-home .start span{font-size:21px}.practice-home .start-note{margin-top:14px;color:#93aaca;font-size:11px}
+.practice-stats{margin-top:26px}.practice-stats-toolbar{display:flex;align-items:center;justify-content:space-between;gap:10px}.practice-stats-toolbar>span{font-size:12px;color:#a6b8d1}
+.stats-period-toggle{display:grid;grid-template-columns:repeat(3,1fr);padding:3px;gap:2px;border:1px solid #243750;border-radius:10px;background:#0b1628}
+.stats-period-toggle button{min-height:36px;padding:6px 9px;font-size:11px;border-radius:7px;color:#8ea5c5}.stats-period-toggle button.selected{background:#1c3555;color:#dceaff;box-shadow:none}
+.practice-stats .mini-stats{margin-top:12px;gap:9px}.practice-stats .mini-stats>div{background:#101d31;border-radius:14px;border-color:#263b59;padding:16px 10px;min-height:108px}.practice-stats .mini-stats strong{font-size:26px;letter-spacing:-.6px;font-variant-numeric:tabular-nums}.practice-stats .mini-stats span{font-size:10px;color:#9eb2d0}
+@media(max-width:380px){.practice-home{padding:14px}.practice-toggle button{font-size:10px;min-height:48px;padding:10px 3px}.practice-stats-toolbar>span{font-size:11px}.stats-period-toggle button{font-size:10px;padding:6px 7px}.practice-stats .mini-stats{gap:6px}.practice-stats .mini-stats strong{font-size:24px}.practice-stats .mini-stats>div{padding:14px 8px}}
+
+/* Progress shares Practice's direction and reporting-window controls. */
+.progress-controls{padding:20px;background:linear-gradient(145deg,#13223a,#101d32);border:1px solid #2b4160;border-radius:20px;margin-bottom:18px}
+.progress-quiz-label{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:13px;color:#b4c5dd;margin-bottom:18px}.progress-quiz-label select{width:170px;margin:0;background:#182b45;border-color:#344b69;border-radius:12px;font-size:12px}
+.progress-controls .position-directions{margin:0 0 18px}.stat-cards{gap:9px}.stat-cards>div{border:1px solid #263b59;border-radius:14px;background:#101d31;padding:18px}.stat-cards strong{font-variant-numeric:tabular-nums;letter-spacing:-.6px}.stat-cards span{color:#9eb2d0}
+.chart{background:#101d31;border-color:#263b59;padding:18px}.report-notes{gap:7px}.report-notes span{border-radius:8px;font-size:11px}.report-section .chart-title h2{font-weight:600}.table-wrap{background:#101d3180}.history-entry{background:#101d31;border-color:#263b59}
+@media(max-width:380px){.progress-controls{padding:14px}.progress-quiz-label{font-size:12px}.progress-quiz-label select{width:150px}.stat-cards>div{padding:16px 12px}}

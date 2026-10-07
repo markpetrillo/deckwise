@@ -25,7 +25,7 @@ import {
 } from "./core";
 import { cardImage, numberCard } from "./cards";
 import { uiIcon } from "./icons";
-import { sessionTrend, directionComparison } from "./reporting";
+import { sessionTrend, directionComparison, practiceEvidence } from "./reporting";
 const app = document.querySelector<HTMLDivElement>("#app")!;
 const STORE = "deckwise.v1";
 let storageProblem = "";
@@ -44,7 +44,7 @@ try {
 let view: "practice" | "deck" | "progress" | "settings" = "deck",
   deckIndex = 0,
   filter = "sequence",
-  period = "all",
+  period: "7" | "30" | "all" = data.settings.statsPeriod ?? "7",
   historyLimit = 12;
 let deckMode: "browse" | "quiz" = "quiz";
 let sequenceDirection: SequenceDirection = "sequence-forward";
@@ -138,13 +138,13 @@ function render() {
 }
 function practice() {
   if (!active) {
-    const associations = data.attempts.filter(a => !isSequence(a.direction));
+    const associations = practiceEvidence(data.attempts, data.settings.mode, period);
     const s = summary(associations),
       due = Object.entries(data.memory).filter(
-        ([k, m]) => !isSequence(k) && m.due <= Date.now(),
+        ([k, m]) => !isSequence(k) && (data.settings.mode === "mixed" || k.startsWith(data.settings.mode + ":")) && m.due <= Date.now(),
       ).length;
     chrome(
-      `<section class="start-panel"><div class="segmented" aria-label="Practice direction">${(["card-number", "number-card", "mixed"] as Mode[]).map((m) => `<button data-mode="${m}" aria-pressed="${data.settings.mode === m}" class="${data.settings.mode === m ? "selected" : ""}">${modeName(m)}</button>`).join("")}</div><label class="session-length" for="minutes"><span>Session length</span><select id="minutes">${[1, 3, 5, 10].map(n => `<option value="${n}" ${data.settings.minutes === n ? "selected" : ""}>${n} minutes</option>`).join("")}</select></label><button class="primary start" data-action="start" ${storageProblem ? "disabled" : ""}>Start ${data.settings.minutes}-minute session <span>↗</span></button><div class="start-note">${associations.length ? `${due} associations due · Adaptive review` : "52 cards · 5 choices"}</div></section><div class="mini-stats"><div><strong>${s.eligibleTotal ? s.accuracy.toFixed(0) + "%" : "—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median correct time (sec)</span></div><div><strong>${new Set(associations.map((a) => a.position)).size}<small>/52</small></strong><span>Cards practiced</span></div></div>`,
+      `<section class="start-panel practice-home"><div class="segmented practice-toggle" role="group" aria-label="Practice type">${(["card-number", "number-card", "mixed"] as Mode[]).map((m) => `<button data-mode="${m}" aria-pressed="${data.settings.mode === m}" class="${data.settings.mode === m ? "selected" : ""}">${m === "mixed" ? "Mixed" : modeName(m)}</button>`).join("")}</div><label class="session-length" for="minutes"><span>Session length</span><select id="minutes">${[1, 3, 5, 10].map(n => `<option value="${n}" ${data.settings.minutes === n ? "selected" : ""}>${n} minutes</option>`).join("")}</select></label><button class="primary start" data-action="start" ${storageProblem ? "disabled" : ""}>Start ${data.settings.minutes}-minute session <span>→</span></button><div class="start-note">${data.attempts.some(a => !isSequence(a.direction) && (data.settings.mode === "mixed" || a.direction === data.settings.mode)) ? `${due} associations due · Adaptive review` : "52 cards · 5 choices"}</div></section><section class="practice-stats" aria-label="Selected practice statistics"><div class="practice-stats-toolbar"><span>Recent results</span><div class="segmented stats-period-toggle" role="group" aria-label="Statistics period">${[["7","7 days"],["30","30 days"],["all","All time"]].map(([id,label]) => `<button data-stats-period="${id}" aria-pressed="${period === id}" class="${period === id ? "selected" : ""}">${label}</button>`).join("")}</div></div><div class="mini-stats"><div><strong>${s.eligibleTotal ? s.accuracy.toFixed(0) + "%" : "—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median correct time (sec)</span></div><div><strong>${new Set(associations.map((a) => a.position)).size}<small>/52</small></strong><span>Cards practiced</span></div></div></section>`,
     );
     return;
   }
@@ -305,7 +305,7 @@ function finish(completed = false) {
     return;
   }
   showDialog(
-    `<h2>Session results</h2><p>${s.total} questions answered in ${timer(sessionElapsed)} of active practice.</p><div class="summary-grid"><div><strong>${s.eligibleTotal ? s.accuracy.toFixed(0) + "%" : "—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median correct answer</span></div><div><strong>${s.wrong}</strong><span>First-answer misses</span></div><div><strong>${s.hints}</strong><span>Hints used</span></div></div><p class="muted">Results saved on this device. Unanswered questions are excluded.</p><button class="primary" data-action="summary-progress">View progress →</button>`,
+    `<h2>Session results</h2><p>${s.total} questions answered in ${timer(sessionElapsed)} of active practice.</p><div class="summary-grid"><div><strong>${s.eligibleTotal ? s.accuracy.toFixed(0) + "%" : "—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median correct time (sec)</span></div><div><strong>${s.wrong}</strong><span>First-answer misses</span></div><div><strong>${s.hints}</strong><span>Hints used</span></div></div><p class="muted">Results saved on this device. Unanswered questions are excluded.</p><button class="primary" data-action="summary-progress">View progress →</button>`,
   );
 }
 function tick() {
@@ -357,6 +357,7 @@ window.addEventListener("storage", (e) => {
   } else
     try {
       data = e.newValue ? validate(JSON.parse(e.newValue)) : emptyData();
+      period = data.settings.statsPeriod ?? "7";
     } catch {
       storageProblem =
         "Another tab changed your saved data. Reload before continuing.";
@@ -501,18 +502,7 @@ function progress() {
     .filter(session => (filter === "all" ? !isSequence(session.mode) : filter === "sequence" ? isSequence(session.mode) : session.mode === filter || (!isSequence(filter) && session.mode === "mixed")) &&
       (period === "all" || session.startedAt >= Date.now() - Number(period) * 86400000));
   chrome(
-    `<section class="page-heading"><h1>Progress</h1></section><div class="filters"><label>Direction<select id="stats-direction"><option value="sequence" ${filter === "sequence" ? "selected" : ""}>Sequence quiz</option><option value="all" ${filter === "all" ? "selected" : ""}>Position practice · Combined</option><option value="sequence-forward" ${filter === "sequence-forward" ? "selected" : ""}>Sequence · forward</option><option value="sequence-backward" ${filter === "sequence-backward" ? "selected" : ""}>Sequence · backward</option><option value="card-number" ${filter === "card-number" ? "selected" : ""}>Card → number</option><option value="number-card" ${filter === "number-card" ? "selected" : ""}>Number → card</option></select></label><label>Period<select id="stats-period">${[
-      ["all", "All time"],
-      ["7", "Last 7 days"],
-      ["30", "Last 30 days"],
-    ]
-      .map(
-        ([v, n]) =>
-          `<option value="${v}" ${period === v ? "selected" : ""}>${n}</option>`,
-      )
-      .join(
-        "",
-      )}</select></label></div>${!filter.startsWith("sequence") ? `<div class="segmented position-directions" aria-label="Position statistics direction">${[["all","Combined"],["card-number","Card → number"],["number-card","Number → card"]].map(([id,label]) => `<button data-stats-direction="${id}" aria-pressed="${filter === id}" class="${filter === id ? "selected" : ""}">${label}</button>`).join("")}</div>` : ""}<div class="summary-grid stat-cards"><div><strong>${s.eligibleTotal ? s.accuracy.toFixed(0) + "%" : "—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median correct answer</span></div><div><strong>${s.total}</strong><span>Questions answered</span></div><div><strong>${slow.length ? Math.round((within / slow.length) * 100) + "%" : "—"}</strong><span>Within ${data.settings.speedTarget}s target</span></div></div>${!s.total ? '<div class="empty"><span>♧</span><h2>No practice results</h2><p>Practice results will appear here, with each direction tracked separately.</p><button class="primary" data-view="practice">Go to practice →</button></div>' : `${filter.startsWith("sequence") ? sequenceTrend() : trend(attempts)}<div class="report-notes"><span>${s.wrong} first-answer misses</span><span>${s.hints} questions with hints</span><span>${new Set(attempts.map((a) => a.position)).size}/52 cards practiced</span></div>`}${filter.startsWith("sequence") ? sequenceBests() : directionInsights()}<section class="report-section"><div class="chart-title"><h2>Per-card results</h2><span>Tap a card for details</span></div><p class="muted compact">${filter === "all" ? "Results combine both directions. Filter above to find a directional weakness." : filter === "sequence" ? "Forward and backward sequence results." : modeName(filter as Direction)} Timing excludes interrupted and recently exposed answers.</p><div class="table-wrap"><table class="deck-table"><thead><tr><th>Position / card</th><th>Answers</th><th>Accuracy</th><th>Median</th></tr></thead><tbody>${STACK.map(
+    `<section class="page-heading"><h1>Progress</h1></section><section class="progress-controls"><label class="progress-quiz-label" for="stats-direction"><span>Quiz type</span><select id="stats-direction"><option value="sequence" ${filter.startsWith("sequence") ? "selected" : ""}>Sequence quiz</option><option value="all" ${!filter.startsWith("sequence") ? "selected" : ""}>Position practice</option></select></label><div class="segmented practice-toggle position-directions" role="group" aria-label="${filter.startsWith("sequence") ? "Sequence direction" : "Practice type"}">${(filter.startsWith("sequence") ? [["sequence-forward","Forward"],["sequence-backward","Backward"],["sequence","Combined"]] : [["card-number","Card → number"],["number-card","Number → card"],["all","Mixed"]]).map(([id,label]) => `<button data-stats-direction="${id}" aria-pressed="${filter === id}" class="${filter === id ? "selected" : ""}">${label}</button>`).join("")}</div><div class="practice-stats-toolbar"><span>Recent results</span><div class="segmented stats-period-toggle" role="group" aria-label="Statistics period">${[["7","7 days"],["30","30 days"],["all","All time"]].map(([id,label]) => `<button data-stats-period="${id}" aria-pressed="${period === id}" class="${period === id ? "selected" : ""}">${label}</button>`).join("")}</div></div></section><div class="summary-grid stat-cards"><div><strong>${s.eligibleTotal ? s.accuracy.toFixed(0) + "%" : "—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median correct time (sec)</span></div><div><strong>${s.total}</strong><span>Questions answered</span></div><div><strong>${slow.length ? Math.round((within / slow.length) * 100) + "%" : "—"}</strong><span>Within ${data.settings.speedTarget}s target</span></div></div>${!s.total ? '<div class="empty"><span>♧</span><h2>No practice results</h2><p>Practice results will appear here, with each direction tracked separately.</p><button class="primary" data-view="practice">Go to practice →</button></div>' : `${filter.startsWith("sequence") ? sequenceTrend() : trend(attempts)}<div class="report-notes"><span>${s.wrong} first-answer misses</span><span>${s.hints} questions with hints</span><span>${new Set(attempts.map((a) => a.position)).size}/52 cards practiced</span></div>`}${filter.startsWith("sequence") ? sequenceBests() : directionInsights()}<section class="report-section"><div class="chart-title"><h2>Per-card results</h2><span>Tap a card for details</span></div><p class="muted compact">${filter === "all" ? "Results combine both directions. Filter above to find a directional weakness." : filter === "sequence" ? "Forward and backward sequence results." : modeName(filter as Direction)} Timing excludes interrupted and recently exposed answers.</p><div class="table-wrap"><table class="deck-table"><thead><tr><th>Position / card</th><th>Answers</th><th>Accuracy</th><th>Median</th></tr></thead><tbody>${STACK.map(
       (_, i) => {
         const ss = summary(attempts.filter((a) => a.position === i + 1));
         return `<tr><td><button class="card-detail" data-position="${i + 1}"><span class="position-number">${i + 1}</span><span>${cardName(i + 1)}</span></button></td><td>${ss.total || "—"}</td><td><span class="accuracy ${ss.eligibleTotal && ss.accuracy < 75 ? "low" : ""}">${ss.eligibleTotal ? ss.accuracy.toFixed(0) + "%" : "—"}</span></td><td>${fmtTime(ss.medianMs)}</td></tr>`;
@@ -547,6 +537,7 @@ function confirmRestoreSession(id: string) {
   const candidate = validate(JSON.parse(JSON.stringify(data)));
   const session = candidate.deletedSessions?.find(d => d.session.id === id)?.session;
   if (!session || !restoreSession(candidate,id)) return;
+  candidate.settings.statsPeriod = "all";
   data = candidate;
   if (!save()) {
     data = old;
@@ -691,7 +682,14 @@ function route(next: typeof view) {
   render();
   window.scrollTo(0, 0);
 }
+function setStatsPeriod(next: "7" | "30" | "all") {
+  period = next;
+  data.settings.statsPeriod = next;
+  save();
+  render();
+}
 function bind(root: ParentNode = app) {
+  root.querySelectorAll<HTMLElement>("[data-stats-period]").forEach(b => b.onclick = () => setStatsPeriod(b.dataset.statsPeriod as typeof period));
   root.querySelectorAll<HTMLElement>("[data-stats-direction]").forEach(b => b.onclick = () => {filter = b.dataset.statsDirection!; render();});
   root.querySelectorAll<HTMLElement>("[data-practice-direction]").forEach(b => b.onclick = () => {data.settings.mode = b.dataset.practiceDirection as Mode; save(); route("practice");});
   root.querySelectorAll<HTMLElement>("[data-restore-session]").forEach(b => b.onclick = () => confirmRestoreSession(b.dataset.restoreSession!));
@@ -817,6 +815,7 @@ function bind(root: ParentNode = app) {
               try {
                 localStorage.removeItem(STORE);
                 data = emptyData();
+                period = "7";
                 recoveryRaw = null;
                 storageConflict = false;
                 storageProblem = "";
@@ -835,12 +834,6 @@ function bind(root: ParentNode = app) {
     .querySelector<HTMLSelectElement>("#stats-direction")
     ?.addEventListener("change", (e) => {
       filter = (e.target as HTMLSelectElement).value;
-      render();
-    });
-  root
-    .querySelector<HTMLSelectElement>("#stats-period")
-    ?.addEventListener("change", (e) => {
-      period = (e.target as HTMLSelectElement).value;
       render();
     });
   root
@@ -890,6 +883,7 @@ function bind(root: ParentNode = app) {
             );
           }
           storageProblem = "";
+          period = data.settings.statsPeriod ?? "7";
           render();
         }
       } catch (err) {

@@ -278,7 +278,7 @@ test("damaged and conflicting deleted history is rejected", () => {
  const active=JSON.parse(JSON.stringify(d));active.deletedSessions[0].session.endedAt=null;assert.throws(()=>validate(active));
 });
 
-import {sessionTrend, directionComparison} from "../src/reporting";
+import {sessionTrend, directionComparison, practiceEvidence} from "../src/reporting";
 test("position trend separates same-day sessions and respects filtered evidence", () => {
  const sessions=[{id:"first",startedAt:100,endedAt:101,mode:"card-number" as const,duration:300000},{id:"second",startedAt:200,endedAt:201,mode:"mixed" as const,duration:60000},{id:"empty",startedAt:300,endedAt:301,mode:"card-number" as const,duration:60000},{id:"seq",startedAt:400,endedAt:401,mode:"sequence-forward" as const,duration:0}];
  const a=[attempt({id:"a",sessionId:"first",elapsedMs:2000}),attempt({id:"b",sessionId:"first",firstCorrect:false,wrong:1}),attempt({id:"c",sessionId:"second",elapsedMs:6000}),attempt({id:"d",sessionId:"second",elapsedMs:1000,interrupted:true}),attempt({id:"seq-a",sessionId:"seq",direction:"sequence-forward"})];
@@ -304,4 +304,20 @@ test("direction speed focus requires enough clean timing and identifies tradeoff
  const accurate=comparisonAnswers("card-number",10,5000),fast=comparisonAnswers("number-card",9,3000).map((a,i)=>({...a,firstCorrect:i!==0&&i!==20,wrong:i===0||i===20?1:0}));
  const trade=directionComparison([...accurate,...fast]);assert.equal(trade.reason,"tradeoff");assert.equal(trade.focus,null);
  const many=[...Array.from({length:150},(_,i)=>({...c[i%40],id:String(i),at:i}))];assert.equal(directionComparison(many).cardCount,100);
+});
+
+test("practice home scopes accuracy, median and coverage to its mode and shared period", () => {
+ const now=50*86400000;
+ const a=[attempt({id:"c7",position:1,at:now,elapsedMs:2000}),attempt({id:"n7",position:2,direction:"number-card",at:now,elapsedMs:7000}),attempt({id:"c30",position:3,at:now-8*86400000,firstCorrect:false,wrong:1}),attempt({id:"n30",position:4,direction:"number-card",at:now-20*86400000,elapsedMs:3000}),attempt({id:"old",position:5,at:now-40*86400000}),attempt({id:"seq",direction:"sequence-forward",at:now})];
+ assert.deepEqual(practiceEvidence(a,"card-number","7",now).map(a=>a.id),["c7"]);
+ assert.deepEqual(practiceEvidence(a,"number-card","7",now).map(a=>a.id),["n7"]);
+ assert.equal(practiceEvidence(a,"mixed","7",now).length,2);
+ const month=practiceEvidence(a,"card-number","30",now);assert.equal(summary(month).accuracy,50);assert.equal(summary(month).medianMs,2000);assert.equal(new Set(month.map(a=>a.position)).size,2);
+ assert.equal(practiceEvidence(a,"mixed","all",now).length,5);
+ assert.equal(practiceEvidence([attempt({at:now-7*86400000})],"card-number","7",now).length,1);
+});
+test("report period defaults to seven days and old backups remain supported", () => {
+ const d=emptyData();assert.equal(d.settings.statsPeriod,"7");delete d.settings.statsPeriod;assert.deepEqual(validate(d),d);
+ for(const period of ["7","30","all"] as const)assert.equal(validate({...d,settings:{...d.settings,statsPeriod:period}}).settings.statsPeriod,period);
+ assert.throws(()=>validate({...d,settings:{...d.settings,statsPeriod:"bad"}}));
 });

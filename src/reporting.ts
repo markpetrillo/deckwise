@@ -1,4 +1,4 @@
-import {isSequence, summary, type Session, type Attempt} from "./core";
+import {isSequence, summary, type Session, type Attempt, type Mode} from "./core";
 /** Attempts arrive already filtered by practice direction and reporting period. */
 export function sessionTrend(sessions: Session[], attempts: Attempt[], limit = 20) {
   const grouped = new Map<string, Attempt[]>();
@@ -36,4 +36,9 @@ export function directionComparison(attempts: Attempt[]) {
     }
   }
   return {card:summary(card), number:summary(number), cardCount:card.length, numberCount:number.length, commonCards:common.size, focus, reason, accuracyGap, speedGapMs};
+}
+
+export function practiceEvidence(attempts: Attempt[], mode: Mode, period: "7" | "30" | "all", now = Date.now()) {
+  const cutoff = period === "all" ? 0 : now - Number(period) * 86400000;
+  return attempts.filter(a => !isSequence(a.direction) && (mode === "mixed" || a.direction === mode) && a.at >= cutoff);
 }

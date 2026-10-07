@@ -78,6 +78,7 @@ export interface Data {
     minutes: number;
     speedTarget: number;
     speedAdaptive: boolean;
+    statsPeriod?: "7" | "30" | "all";
   };
 }
 export function emptyData(): Data {
@@ -91,6 +92,7 @@ export function emptyData(): Data {
       minutes: 5,
       speedTarget: 3,
       speedAdaptive: true,
+      statsPeriod: "7",
     },
   };
 }
@@ -278,7 +280,8 @@ export function validate(raw: unknown): Data {
     !finite(d.settings.speedTarget) ||
     d.settings.speedTarget < 1 ||
     d.settings.speedTarget > 30 ||
-    typeof d.settings.speedAdaptive !== "boolean"
+    typeof d.settings.speedAdaptive !== "boolean" ||
+    (d.settings.statsPeriod !== undefined && !["7","30","all"].includes(d.settings.statsPeriod))
   )
     throw Error("Unsupported or damaged backup.");
   const sessionIds = new Set<string>(),
