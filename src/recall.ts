@@ -18,7 +18,7 @@ export function recallPosition(direction: Direction, input: RecallInput): number
     const position = Number(input.digits);
     return position >= 1 && position <= 52 ? position : null;
   }
-  if (direction !== "number-card" || input.rank.length !== 1 || !RANKS.includes(input.rank) || !Object.hasOwn(SUITS,input.suit)) return null;
+  if ((direction !== "number-card" && direction !== "sequence-forward" && direction !== "sequence-backward") || input.rank.length !== 1 || !RANKS.includes(input.rank) || !Object.hasOwn(SUITS,input.suit)) return null;
   const index = STACK.indexOf(input.rank+input.suit);
   return index < 0 ? null : index+1;
 }

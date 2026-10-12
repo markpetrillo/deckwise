@@ -1,4 +1,4 @@
-import {isSequence, summary, mappingModel, STACK, type MappingModel, type Session, type Attempt, type Mode, type AnswerFormat, formatOf} from "./core";
+import {isSequence, summary, mappingModel, STACK, type MappingModel, type Session, type Attempt, type Mode, type AnswerFormat, type SequenceDirection, sequenceResult, formatOf} from "./core";
 /** Attempts arrive already filtered by practice direction and reporting period. */
 export function sessionTrend(sessions: Session[], attempts: Attempt[], limit = 20) {
   const grouped = new Map<string, Attempt[]>();
@@ -75,4 +75,13 @@ export function mappingInsights(attempts: Attempt[], target = 3, direction: "car
 export function practiceEvidence(attempts: Attempt[], mode: Mode, period: "7" | "30" | "all", now = Date.now(), format?: AnswerFormat) {
   const cutoff = period === "all" ? 0 : now - Number(period) * 86400000;
   return attempts.filter(a => !isSequence(a.direction) && (mode === "mixed" || a.direction === mode) && a.at >= cutoff && (!format || formatOf(a) === format));
+}
+
+/** Full-deck records are compared only within the requested format/direction. */
+export function sequenceRuns(sessions: Session[], attempts: Attempt[], direction: SequenceDirection | "sequence", format: AnswerFormat | "all", period: "7" | "30" | "all", now = Date.now()) {
+  const cutoff = period === "all" ? 0 : now - Number(period) * 86400000;
+  return sessions.filter(s => isSequence(s.mode) && (direction === "sequence" || s.mode === direction) && (format === "all" || formatOf(s) === format) && s.startedAt >= cutoff)
+    .sort((a,b) => a.startedAt-b.startedAt)
+    .map(s => ({s,r:sequenceResult(s,attempts)}))
+    .filter(({r}) => r.complete);
 }

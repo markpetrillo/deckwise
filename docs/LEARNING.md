@@ -123,14 +123,25 @@ The app persists submissions/settings, reports storage failures with an export a
 
 ## Multiple choice and Direct recall
 
-Practice offers a saved answer-format preference: Multiple choice or Direct recall. The selected format applies to card → number, number → card, and mixed position practice. Sequence quizzes retain their existing five-choice interface.
+Practice offers a saved answer-format preference: Multiple choice or Direct recall. The selected format applies to card → number, number → card, and mixed position practice. Sequence quizzes offer the same two answer formats with a separate saved preference, defaulting to multiple choice for existing users.
 
 Direct recall shows all 13 ranks and four suits for number → card, or a ten-digit keypad for card → number. Rank and suit may be entered in either order. Positions accept one or two digits, including leading zeros such as 07. Check answer submits a complete valid answer; editing, partial entries, 00, and values above 52 are not graded. Clear/backspace allow correction before submission. Repeating an already submitted wrong answer is disabled as in multiple choice.
 
 First-response time measures through Check answer, including selection and confirmation. Each complete wrong submission increments the existing mistake count; correcting later never changes the first miss or its recorded time. Hints, reveals, pauses, interruptions, and recent-exposure rules remain shared. Keyboard entry supports digits/Backspace/Enter for positions and A–9/T/J/Q/K with C/D/H/S for card answers.
 
-New sessions and attempts record answerFormat. Missing format fields in older backups are classified as multiple-choice because it was the only available interface; the raw fields are not rewritten. Existing multiple-choice memory keys remain unchanged. Direct-recall keys use a direct-recall: prefix, and validation rejects invalid formats, mismatched session/attempt formats, and direct-recall sequence entries.
+New sessions and attempts record answerFormat. Missing format fields in older backups are classified as multiple-choice because it was the only available interface; the raw fields are not rewritten. Existing multiple-choice memory keys remain unchanged. Direct-recall keys use a direct-recall: prefix, and validation rejects invalid formats, mismatched session/attempt formats, for both position and sequence sessions.
 
 The recall model, review intervals, error pressure, timed evidence, and coverage protection are separate for each (format, direction, position). Five-choice performance cannot mask weak direct recall. The existing speed target applies to both formats, but direct-recall times include additional input steps, so format-specific reports are the useful comparison.
 
 Practice start statistics follow the selected format. Progress adds Multiple choice, Direct recall, and All formats filters alongside existing direction and period controls. Session history and raw attempts label format; CSV adds answerFormat. All formats is an optional combined report, never the scheduler's evidence pool. Practice shortcuts from a format-specific report select that format too. Session deletion/restore and full backups preserve both formats.
+
+
+## Sequence Direct recall
+
+Deck → Sequence quiz now offers Multiple choice or Direct recall for forward, backward, and random-start runs. A separate optional sequenceAnswerFormat setting preserves the position-practice preference. Existing backups omit this setting and continue to default to multiple choice without rewriting old sessions or answers.
+
+Direct recall uses all 13 ranks and four suits, in either order, followed by Check answer. First, last, and random-start prompts name the requested starting card/position without revealing its identity. Every complete run covers 52 cards exactly once, wrapping as before. Incorrect first submissions, corrections, reveals, interrupted timing, pause, and early finish retain their existing semantics. Full-run scored time still adds five seconds per wrong submission or reveal.
+
+Sequence attempts/sessions carry answerFormat and remain separate from both position directions. Sequence memory keys support the format prefix, and fluency comparisons use only the same sequence direction and format. Progress now filters sequence results by format as well as direction and period. Personal bests are separate for each (direction, format); All formats displays separate record cards and labels run formats in the trend/history. Incomplete and legacy countdown runs still do not qualify as full-deck bests.
+
+Rank/suit and digit edits now replace only the answer panel. Prompt artwork, countdown/run timer, progress, and session controls stay mounted while an answer is composed. Focus is restored to the selected control without scrolling. The shared selectors, setup panels, start prompt, reduced-motion behavior, and responsive dialogs use the same restrained UI styles across both quiz types.

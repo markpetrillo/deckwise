@@ -30,7 +30,7 @@ test("partial and invalid answers are never graded as valid positions",()=>{
   assert.equal(recallPosition("card-number",{...empty,digits}),null);
  for(const input of [{...empty,rank:"J"},{...empty,suit:"D"},{...empty,rank:"10",suit:"D"},{...empty,rank:"J",suit:"__proto__"}])
   assert.equal(recallPosition("number-card",input),null);
- assert.equal(recallPosition("sequence-forward",{...empty,rank:"J",suit:"D"}),null);
+ assert.equal(recallPosition("sequence-forward",{...empty,rank:"J",suit:"D"}),32);
 });
 test("rank and suit can be selected in either order and changed before checking",()=>{
  const base=emptyRecallInput();
@@ -103,11 +103,11 @@ test("session delete and restore rebuild both formats without mixing or losing e
  const restored=validate(d);assert.equal(restoreSession(restored,"direct-recall"),true);
  assert.deepEqual(restored,baseline);
 });
-test("damaged formats, session mismatches and direct sequence memory are rejected",()=>{
+test("damaged formats, session mismatches and invalid memory directions are rejected",()=>{
  const d=data();record(d,attempt("direct-recall"));
  assert.throws(()=>validate({...d,settings:{...d.settings,answerFormat:"bad"}}));
  assert.throws(()=>validate({...d,attempts:[{...d.attempts[0],answerFormat:"bad"}]}));
  assert.throws(()=>validate({...d,attempts:[{...d.attempts[0],answerFormat:"multiple-choice"}]}));
- assert.throws(()=>validate({...d,sessions:[{...d.sessions[1],mode:"sequence-forward"}]}));
- assert.throws(()=>validate({...d,memory:{"direct-recall:sequence-forward:31":d.memory[key(31,"number-card","direct-recall")]}}));
+ assert.throws(()=>validate({...d,sessions:[{...d.sessions[1],mode:"invalid"}]}));
+ assert.throws(()=>validate({...d,memory:{"direct-recall:mixed:31":d.memory[key(31,"number-card","direct-recall")]}}));
 });

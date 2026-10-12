@@ -93,3 +93,12 @@ All 21 core tests pass, including mode-specific evidence, rolling 7/30-day windo
 - Format-aware tests verify independent mastery, intervals, report filtering, assistance/timing exclusions, and delete/restore rebuilding.
 - Interaction tests run the actual app code against an in-memory DOM: touch input, Check answer gating, first-miss correction, raw timing, keyboard entry, pause/hint/reveal, five-choice preservation, and Progress/Practice format selection.
 - Local preview runs at http://127.0.0.1:5188. Browser automation could not start because its runtime failed; no screenshot or browser layout QA is claimed. Styles target two rank rows on ordinary phones and a third row on very narrow screens.
+
+
+## Sequence Direct recall
+
+- 66 tests pass, including actual app interaction tests for complete forward and random-start backward direct runs, wrapping, penalties, pause, reveal, partial runs, format preferences, records, and legacy history.
+- Incremental input tests verify that rank/suit edits update only the answer panel while leaving the prompt and session controls intact.
+- Sequence backup validation, format-specific timing, date/direction/format report filters, and recovery round-trips are covered.
+- Typecheck, production bundle, service-worker generation, and diff checks pass.
+- Browser visual inspection remains unavailable because the UI automation runtime cannot initialize; no screenshot or browser rendering check is claimed.

@@ -4,22 +4,32 @@ import {readFileSync} from "node:fs";
 import {dirname, resolve} from "node:path";
 import vm from "node:vm";
 import ts from "typescript";
+import {STACK,emptyData,validate,type Data} from "../src/core";
 
 /** Run the real app against a small in-memory DOM, without touching browser data. */
-function appHarness() {
+function appHarness(seed?: Data) {
   let elapsed=0, id=0, dialog: any=null;
   const listeners = new Map<string,Function[]>();
   const stored = new Map<string,string>();
+  if (seed) stored.set("deckwise.v1",JSON.stringify(seed));
+  let fullWrites=0,panelWrites=0;
   const root = () => {
-    let html="", buttons:any[]=[];
+    let html="", buttons:any[]=[],fields:any[]=[];
     const element:any = {
       get innerHTML(){return html;},
       set innerHTML(value:string){
-        html=value;
+        html=value; fullWrites++;
+        const oldButtons=new Map(buttons.map(b=>[JSON.stringify(b.attrs),b]));
         buttons=Array.from(value.matchAll(/<button\b([^>]*)>/g),match=>{
           const attrs=Object.fromEntries(Array.from(match[1].matchAll(/([\w-]+)="([^"]*)"/g),m=>[m[1],m[2]]));
           const dataset=Object.fromEntries(Object.entries(attrs).filter(([k])=>k.startsWith("data-")).map(([k,v])=>[k.slice(5).replace(/-([a-z])/g,(_,c)=>c.toUpperCase()),v]));
-          return {attrs,dataset,disabled:/(?:^|\s)disabled(?:\s|$)/.test(match[1]),onclick:null,focus(){},addEventListener(){}};
+          const old=oldButtons.get(JSON.stringify(attrs));
+          return {attrs,dataset,disabled:/(?:^|\s)disabled(?:\s|$)/.test(match[1]),onclick:old?.onclick??null,focus(){},addEventListener(){}};
+        });
+        fields=Array.from(value.matchAll(/<select\b([^>]*)>/g),match=>{
+          const id=match[1].match(/id="([^"]*)"/)?.[1];
+          const events=new Map<string,Function>();
+          return {id,events,addEventListener(name:string,fn:Function){events.set(name,fn);}};
         });
       },
       querySelectorAll(selector:string){
@@ -28,6 +38,17 @@ function appHarness() {
       },
       querySelector(selector:string){
         if(selector===".dialog-close")return {addEventListener(){}};
+        if(selector.startsWith("#"))return fields.find(f=>f.id===selector.slice(1))??null;
+        if(selector===".recall-controls" && html.includes('class="recall-controls"')) {
+          const pattern=/(<section class="recall-controls"[^>]*>)([\s\S]*?)(<\/section>)/;
+          const inside=()=>html.match(pattern)?.[2]??"";
+          return {
+            get innerHTML(){return inside();},
+            set innerHTML(value:string){const oldWrites=fullWrites;element.innerHTML=html.replace(pattern,(_,before,_content,after)=>before+value+after);fullWrites=oldWrites;panelWrites++;},
+            querySelectorAll(s:string){return element.querySelectorAll(s).filter((b:any)=>Object.entries(b.attrs).some(([k,v])=>k.startsWith("data-")&&inside().includes(k+'="'+v+'"')));},
+            querySelector(s:string){return s.startsWith("[data-")?element.querySelector(s):null;}
+          };
+        }
         const match=selector.match(/^\[([\w-]+)="([^"]*)"\]$/);
         return match ? buttons.find(b=>b.attrs[match[1]]===match[2])??null : null;
       },
@@ -76,12 +97,18 @@ function appHarness() {
   const begin=(mode="card-number",format="direct-recall")=>{
     click("data-view","practice");click("data-practice-format",format);click("data-mode",mode);click("data-action","start");
   };
+  const choose=(id:string,value:string)=>{const field=app.querySelector("#"+id);assert.ok(field?.events.get("change"));field.events.get("change")({target:{value}});};
+  const beginSequence=(direction="sequence-forward",format="direct-recall",random=false)=>{
+    click("data-view","deck");click("data-sequence-format",format);click("data-sequence-direction",direction);
+    if(random)choose("sequence-start","random");click("data-action","start-sequence");
+  };
+  const cardAnswer=()=>{const [rank,suit]=STACK[state().q.position-1];click("data-rank",rank);click("data-suit",suit);click("data-action","recall-submit");};
   const key=(value:string)=>{
     for(const fn of listeners.get("keydown")??[])fn({key:value,target:{tagName:"BODY"},preventDefault(){},ctrlKey:false,metaKey:false,altKey:false});
   };
-  return {app,begin,click,key,state,advance:(ms:number)=>{elapsed+=ms;},document,
+  return {app,begin,beginSequence,cardAnswer,click,key,state,choose,writes:()=>({full:fullWrites,panel:panelWrites}),advance:(ms:number)=>{elapsed+=ms;},document,
     visibility:(hidden:boolean)=>{document.hidden=hidden;for(const fn of listeners.get("visibilitychange")??[])fn();},
-    saved:()=>JSON.parse(stored.get("deckwise.v1")!)};
+    dialogHtml:()=>dialog?.innerHTML??"",saved:()=>JSON.parse(stored.get("deckwise.v1")!)};
 }
 
 test("touch digits edit freely until Check answer, then record a first response",()=>{
@@ -138,10 +165,85 @@ test("session results and Progress use the chosen answer format without hiding o
  assert.ok(ui.app.innerHTML.includes('data-report-format="direct-recall" aria-pressed="true"'));
  assert.ok(ui.app.innerHTML.includes("<strong>1</strong><span>Questions answered"));
  ui.click("data-report-format","multiple-choice");
- assert.ok(ui.app.innerHTML.includes("No practice results"));
+ assert.ok(ui.app.innerHTML.includes("No results in this view"));
  ui.click("data-report-format","all");
  assert.ok(ui.app.innerHTML.includes("<strong>1</strong><span>Questions answered"));
  assert.equal(ui.saved().attempts.length,1);
  ui.click("data-report-format","multiple-choice");ui.click("data-practice-direction","card-number");
  assert.equal(ui.state().data.settings.answerFormat,"multiple-choice");
+});
+
+
+test("sequence setup remembers its own input format without changing position practice",()=>{
+ const ui=appHarness();
+ ui.click("data-sequence-format","direct-recall");
+ assert.equal(ui.saved().settings.sequenceAnswerFormat,"direct-recall");
+ assert.equal(ui.saved().settings.answerFormat,"multiple-choice");
+ ui.begin("number-card","multiple-choice");ui.click("data-action","finish");ui.click("data-action","summary-progress");
+ ui.click("data-view","deck");
+ assert.ok(ui.app.innerHTML.includes('data-sequence-format="direct-recall" aria-pressed="true"'));
+ ui.click("data-action","start-sequence");
+ assert.equal(ui.state().q.answerFormat,"direct-recall");
+ assert.equal(ui.state().q.position,1);
+ assert.ok(ui.app.innerHTML.includes("First card"));
+ assert.equal((ui.app.innerHTML.match(/data-rank="/g)??[]).length,13);
+});
+test("rank/suit edits update only the answer panel and preserve prompt and session controls",()=>{
+ const ui=appHarness();ui.beginSequence();
+ const before=ui.writes(),frame=ui.app.innerHTML.split('<section class="recall-controls"')[0];
+ ui.click("data-rank","J");ui.click("data-suit","D");
+ assert.equal(ui.writes().full,before.full);assert.equal(ui.writes().panel,before.panel+2);
+ assert.equal(ui.app.innerHTML.split('<section class="recall-controls"')[0],frame);
+ ui.click("data-action","pause");assert.equal(ui.state().paused,true);
+ ui.click("data-action","pause");assert.equal(ui.state().paused,false);
+ assert.equal(ui.state().q.input.rank,"J");
+});
+test("direct forward sequence covers all 52 cards and finishes a full run",()=>{
+ const ui=appHarness();ui.beginSequence();
+ for(let i=0;i<52;i++){assert.equal(ui.state().q.position,i+1);ui.advance(100);ui.cardAnswer();}
+ const d=ui.saved(),s=d.sessions[0];assert.equal(s.completed,true);assert.equal(s.elapsedMs,5200);
+ assert.equal(s.answerFormat,"direct-recall");assert.equal(d.attempts.length,52);assert.equal(new Set(d.attempts.map((a:any)=>a.position)).size,52);
+ assert.ok(d.attempts.every((a:any)=>a.direction==="sequence-forward"&&a.answerFormat==="direct-recall"&&a.firstCorrect));
+ assert.ok(ui.state().q===null);
+ assert.deepEqual(validate(d),d);
+ ui.click("data-action","summary-progress");
+ assert.ok(ui.app.innerHTML.includes('data-report-format="direct-recall" aria-pressed="true"'));
+ assert.ok(ui.app.innerHTML.includes("Forward · Direct recall"));
+ ui.click("data-report-format","multiple-choice");assert.ok(ui.app.innerHTML.includes("No results in this view"));
+ ui.click("data-report-format","all");assert.ok(ui.app.innerHTML.includes("Forward · Multiple choice"));assert.ok(ui.app.innerHTML.includes("Forward · Direct recall"));
+});
+test("direct backward random-start sequence wraps and checks each card once",()=>{
+ const ui=appHarness();ui.beginSequence("sequence-backward","direct-recall",true);
+ const start=ui.state().q.position;assert.equal(start,11);assert.ok(ui.app.innerHTML.includes("Position 11"));
+ for(let i=0;i<52;i++){assert.equal(ui.state().q.position,((start-1-i+52)%52)+1);ui.advance(100);ui.cardAnswer();}
+ const d=ui.saved();assert.equal(d.sessions[0].completed,true);assert.equal(d.sessions[0].startPosition,11);
+ assert.equal(new Set(d.attempts.map((a:any)=>a.position)).size,52);assert.deepEqual(validate(d),d);
+});
+test("sequence miss correction, reveal, pause and early finish preserve penalties and raw time",()=>{
+ const ui=appHarness();ui.beginSequence();
+ ui.click("data-rank","J");ui.click("data-suit","D");ui.advance(500);ui.click("data-action","recall-submit");
+ ui.advance(300);ui.cardAnswer();assert.equal(ui.saved().attempts[0].firstCorrect,false);assert.equal(ui.saved().attempts[0].elapsedMs,500);
+ ui.click("data-action","pause");ui.advance(4000);ui.click("data-action","pause");ui.advance(200);ui.click("data-action","reveal");
+ ui.click("data-action","finish");
+ const d=ui.saved();assert.equal(d.sessions[0].elapsedMs,1000);assert.equal(d.sessions[0].completed,false);
+ assert.equal(d.attempts[0].finalResult,"corrected");assert.equal(d.attempts[1].finalResult,"revealed");assert.equal(d.attempts[1].interrupted,true);
+ assert.ok(ui.dialogHtml().includes("2/52 answered"));assert.ok(ui.dialogHtml().includes("+10s"));assert.ok(ui.dialogHtml().includes("0:11.0"));
+ assert.deepEqual(validate(d),d);
+});
+test("sequence multiple choice retains its original keyboard input and empty-state navigation",()=>{
+ const ui=appHarness();ui.beginSequence("sequence-backward","multiple-choice");
+ const q=ui.state().q;assert.equal(q.position,52);assert.equal(q.options.length,5);
+ assert.equal(ui.app.innerHTML.includes('data-rank="'),false);
+ ui.key(String(q.options.indexOf(q.position)+1));assert.equal(ui.state().q.position,51);
+ ui.click("data-action","finish");ui.click("data-action","summary-progress");
+ ui.click("data-report-format","direct-recall");assert.ok(ui.app.innerHTML.includes("No results in this view"));
+ ui.click("data-action","sequence-setup");assert.ok(ui.app.innerHTML.includes('data-sequence-format="'));
+});
+test("legacy sequence history remains visible as multiple choice after reload",()=>{
+ const d=emptyData();delete d.settings.sequenceAnswerFormat;delete d.settings.answerFormat;
+ const session={id:"legacy",startedAt:50*86400000-1000,endedAt:50*86400000,mode:"sequence-forward" as const,duration:0,runTarget:52,startPosition:1,elapsedMs:52000,completed:true};
+ d.sessions=[session];d.attempts=STACK.map((_,i)=>({id:"a"+i,sessionId:"legacy",position:i+1,direction:"sequence-forward",at:session.startedAt+i,firstCorrect:true,wrong:0,hint:false,revealed:false,elapsedMs:1000,interrupted:false,recentExposure:false}));
+ const ui=appHarness(d);ui.click("data-view","progress");
+ assert.ok(ui.app.innerHTML.includes("Forward · Multiple choice"));assert.ok(ui.app.innerHTML.includes("1 completed"));
+ ui.click("data-report-format","direct-recall");assert.ok(ui.app.innerHTML.includes("No results in this view"));
 });

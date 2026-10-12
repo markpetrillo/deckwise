@@ -7,7 +7,7 @@
     "dev": "vite --host 127.0.0.1",
     "build": "tsc --noEmit && vite build && node scripts/service-worker.mjs",
     "preview": "vite preview --host 127.0.0.1",
-    "test": "tsx --test tests/core.test.ts tests/learning.test.ts tests/recall.test.ts tests/recall-ui.test.ts"
+    "test": "tsx --test tests/core.test.ts tests/learning.test.ts tests/recall.test.ts tests/recall-ui.test.ts tests/sequence.test.ts"
   },
   "devDependencies": {
     "@types/node": "^26.6.4",

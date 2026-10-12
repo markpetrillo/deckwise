@@ -88,6 +88,7 @@ export interface Data {
     speedAdaptive: boolean;
     statsPeriod?: "7" | "30" | "all";
     answerFormat?: AnswerFormat;
+    sequenceAnswerFormat?: AnswerFormat;
   };
 }
 export function emptyData(): Data {
@@ -103,6 +104,7 @@ export function emptyData(): Data {
       speedAdaptive: true,
       statsPeriod: "7",
       answerFormat: "multiple-choice",
+      sequenceAnswerFormat: "multiple-choice",
     },
   };
 }
@@ -194,10 +196,10 @@ export type MappingModel = ReturnType<typeof mappingModel>;
 export function mappingModels(data: Data, direction: Direction, now = Date.now(), format = formatOf(data.settings)): MappingModel[] {
   return STACK.map((_,i) => mappingModel(data.attempts,i+1,direction,data.settings.speedTarget,now,format));
 }
-export function speedLimit(data: Data, direction: Direction): number {
+export function speedLimit(data: Data, direction: Direction, format: AnswerFormat = "multiple-choice"): number {
   const times = data.attempts
     .filter(
-      (a) => a.direction === direction && timingEligible(a),
+      (a) => a.direction === direction && formatOf(a) === format && timingEligible(a),
     )
     .slice(-30)
     .map((a) => a.elapsedMs!);
@@ -221,7 +223,7 @@ export function record(data: Data, attempt: Attempt): void {
   const slow =
     timingEligible(attempt) &&
     data.settings.speedAdaptive &&
-    attempt.elapsedMs! > (isSequence(attempt.direction) ? speedLimit(data, attempt.direction) : data.settings.speedTarget * 1000);
+    attempt.elapsedMs! > (isSequence(attempt.direction) ? speedLimit(data, attempt.direction,formatOf(attempt)) : data.settings.speedTarget * 1000);
   const days = clean
     ? attempt.recentExposure
       ? Math.max(prev.intervalDays, 0.02)
@@ -384,7 +386,7 @@ export function validate(raw: unknown): Data {
   )
     throw Error("Unsupported or damaged backup.");
   const validFormat = (v: unknown) => v === undefined || v === "multiple-choice" || v === "direct-recall";
-  if (!validFormat(d.settings.answerFormat)) throw Error("Invalid answer format.");
+  if (!validFormat(d.settings.answerFormat) || !validFormat(d.settings.sequenceAnswerFormat)) throw Error("Invalid answer format.");
   const sessionFormats = new Map<string,AnswerFormat>();
   const sessionIds = new Set<string>(),
     attemptIds = new Set<string>();
@@ -398,7 +400,6 @@ export function validate(raw: unknown): Data {
       !mode(s.mode) ||
       !finite(s.duration) ||
       !validFormat(s.answerFormat) ||
-      (isSequence(s.mode) && formatOf(s) !== "multiple-choice") ||
       (s.runTarget !== undefined && (!isSequence(s.mode) || s.runTarget !== 52 || !Number.isInteger(s.startPosition) || s.startPosition! < 1 || s.startPosition! > 52 || !finite(s.elapsedMs) || typeof s.completed !== "boolean"))
     )
       throw Error("Invalid session history.");
@@ -417,7 +418,6 @@ export function validate(raw: unknown): Data {
       !["card-number", "number-card", "sequence-forward", "sequence-backward"].includes(a.direction) ||
       !finite(a.at) ||
       !validFormat(a.answerFormat) ||
-      (isSequence(a.direction) && formatOf(a) !== "multiple-choice") ||
       formatOf(a) !== sessionFormats.get(a.sessionId) ||
       !Number.isInteger(a.wrong) ||
       a.wrong < 0 ||
@@ -441,7 +441,7 @@ export function validate(raw: unknown): Data {
   }
   for (const [k, m] of Object.entries(d.memory)) {
     if (
-      !/^((direct-recall:)?(card-number|number-card)|sequence-forward|sequence-backward):([1-9]|[1-4][0-9]|5[0-2])$/.test(k) ||
+      !/^(direct-recall:)?(card-number|number-card|sequence-forward|sequence-backward):([1-9]|[1-4][0-9]|5[0-2])$/.test(k) ||
       !m ||
       !["due", "intervalDays", "successes", "failures", "slow"].every((f) =>
         finite((m as unknown as Record<string, unknown>)[f]),

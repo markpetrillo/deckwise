@@ -35,7 +35,7 @@ import {
 import { emptyRecallInput, editRecallInput, recallPosition, recallDisplay, type RecallInput, type RecallAction } from "./recall";
 import { cardImage, numberCard } from "./cards";
 import { uiIcon } from "./icons";
-import { sessionTrend, directionComparison, practiceEvidence, cardRanking, mappingInsights, type CardSort } from "./reporting";
+import { sessionTrend, directionComparison, practiceEvidence, cardRanking, mappingInsights, type CardSort, sequenceRuns } from "./reporting";
 const app = document.querySelector<HTMLDivElement>("#app")!;
 const STORE = "deckwise.v1";
 let storageProblem = "";
@@ -58,6 +58,8 @@ let view: "practice" | "deck" | "progress" | "settings" = "deck",
   historyLimit = 12;
 let cardSort: CardSort = "position";
 let reportFormat: AnswerFormat | "all" = formatOf(data.settings);
+let sequenceReportFormat: AnswerFormat | "all" = data.settings.sequenceAnswerFormat ?? "multiple-choice";
+const reportAnswerFormat = () => filter.startsWith("sequence") ? sequenceReportFormat : reportFormat;
 let deckMode: "browse" | "quiz" = "quiz";
 let sequenceDirection: SequenceDirection = "sequence-forward";
 let sequenceStart = "beginning";
@@ -184,10 +186,16 @@ function practice() {
         ? ""
         : "";
   chrome(
-    `<section class="session-top ${q.answerFormat === "direct-recall" ? "direct-session" : ""}"><div><span class="eyebrow">${isSequence(q.direction) && sequenceSource === 0 ? sequenceStart === "random" ? `Choose position ${q.position}` : q.direction === "sequence-forward" ? "Choose the first card" : "Choose the last card" : modeName(q.direction)}</span>${isSequence(q.direction) ? `<span class="sequence-position">${stats.total - (data.attempts.some(a => a.id === q!.id) ? 1 : 0) + 1} / 52</span>` : ""}</div><div class="session-controls"><button class="session-timer" data-action="pause" aria-label="${paused ? "Resume" : "Pause"} practice"><span id="remaining">${active.runTarget ? runTime(sessionElapsed) : timer(active.duration - sessionElapsed)}</span><span>${paused ? "▶ Resume" : "Ⅱ Pause"}</span></button><button class="text-button end-session" data-action="finish">End session</button></div></section><div class="session-progress"><span id="session-bar" style="width:${active.runTarget ? data.attempts.filter(a => a.sessionId === active!.id && (a.id !== q?.id || q.done)).length / active.runTarget * 100 : Math.min(100, (sessionElapsed / active.duration) * 100)}%"></span></div><div class="question-stage ${paused ? "paused" : ""} ${q.answerFormat === "direct-recall" ? "direct-stage" : ""}"><div class="prompt-card">${isSequence(q.direction) ? sequenceSource === 0 ? "" : cardImage(sequenceSource) : q.direction === "card-number" ? cardImage(q.position) : numberCard(q.position)}</div></div><div class="feedback ${q.done ? "positive" : q.wrong ? "negative" : ""}" role="status" aria-live="polite">${paused ? "Paused" : result}</div>${answerControls()}<div class="practice-actions">${q.done ? q.revealed ? `<button class="primary next" data-action="next" ${paused ? "disabled" : ""}>Next card <span>→</span></button>` : `<span class="next-status">${paused ? "Resume to continue" : "Next card…"}</span>` : `${isSequence(q.direction) ? "" : `<button class="text-button" data-action="hint" ${paused ? "disabled" : ""}>☼ Neighbor hint</button>`}<button class="text-button" data-action="reveal" ${paused ? "disabled" : ""}>Reveal answer</button>`}</div>${q.hint && !q.done ? `<div class="hint-panel">${q.position > 1 ? `<div><span>Before</span>${cardImage(q.position - 1)}</div>` : "<span>Top of deck</span>"}${q.position < 52 ? `<div><span>After</span>${cardImage(q.position + 1)}</div>` : "<span>Bottom of deck</span>"}</div>` : ""}<div class="session-bottom"><span>${stats.total} answered · ${active.runTarget ? sequenceResult(active, data.attempts).accuracy.toFixed(0) + "% first try" : (stats.eligibleTotal ? stats.accuracy.toFixed(0) + "%" : "—") + " independent"}</span></div>`,
+    `<section class="session-top ${q.answerFormat === "direct-recall" ? "direct-session" : ""}"><div><span class="eyebrow">${isSequence(q.direction) && sequenceSource === 0 ? sequenceStart === "random" ? `Choose position ${q.position}` : q.direction === "sequence-forward" ? "Choose the first card" : "Choose the last card" : modeName(q.direction)}</span>${isSequence(q.direction) ? `<span class="sequence-position">${stats.total - (data.attempts.some(a => a.id === q!.id) ? 1 : 0) + 1} / 52 · ${formatName(q.answerFormat)}</span>` : `<span class="answer-format-label">${formatName(q.answerFormat)}</span>`}</div><div class="session-controls"><button class="session-timer" data-action="pause" aria-label="${paused ? "Resume" : "Pause"} practice"><span id="remaining">${active.runTarget ? runTime(sessionElapsed) : timer(active.duration - sessionElapsed)}</span><span>${paused ? "▶ Resume" : "Ⅱ Pause"}</span></button><button class="text-button end-session" data-action="finish">End session</button></div></section><div class="session-progress"><span id="session-bar" style="width:${active.runTarget ? data.attempts.filter(a => a.sessionId === active!.id && (a.id !== q?.id || q.done)).length / active.runTarget * 100 : Math.min(100, (sessionElapsed / active.duration) * 100)}%"></span></div><div class="question-stage ${paused ? "paused" : ""} ${q.answerFormat === "direct-recall" ? "direct-stage" : ""}">${questionPrompt()}</div><div class="feedback ${q.done ? "positive" : q.wrong ? "negative" : ""}" role="status" aria-live="polite">${paused ? "Paused" : result}</div>${answerControls()}<div class="practice-actions">${q.done ? q.revealed ? `<button class="primary next" data-action="next" ${paused ? "disabled" : ""}>Next card <span>→</span></button>` : `<span class="next-status">${paused ? "Resume to continue" : "Next card…"}</span>` : `${isSequence(q.direction) ? "" : `<button class="text-button" data-action="hint" ${paused ? "disabled" : ""}>☼ Neighbor hint</button>`}<button class="text-button" data-action="reveal" ${paused ? "disabled" : ""}>Reveal answer</button>`}</div>${q.hint && !q.done ? `<div class="hint-panel">${q.position > 1 ? `<div><span>Before</span>${cardImage(q.position - 1)}</div>` : "<span>Top of deck</span>"}${q.position < 52 ? `<div><span>After</span>${cardImage(q.position + 1)}</div>` : "<span>Bottom of deck</span>"}</div>` : ""}<div class="session-bottom"><span>${stats.total} answered · ${active.runTarget ? sequenceResult(active, data.attempts).accuracy.toFixed(0) + "% first try" : (stats.eligibleTotal ? stats.accuracy.toFixed(0) + "%" : "—") + " independent"}</span></div>`,
   );
 }
-function formatToggle(format: AnswerFormat | "all", context: "practice" | "report") {
+function questionPrompt() {
+  if (!q) return "";
+  if (isSequence(q.direction) && sequenceSource === 0) return `<div class="sequence-start-prompt"><span>Start of run</span><strong>${sequenceStart === "random" ? `Position ${q.position}` : q.direction === "sequence-forward" ? "First card" : "Last card"}</strong><p>${q.answerFormat === "direct-recall" ? "Choose its rank and suit below." : "Choose the card below."}</p></div>`;
+  return `<div class="prompt-card">${isSequence(q.direction) ? cardImage(sequenceSource) : q.direction === "card-number" ? cardImage(q.position) : numberCard(q.position)}</div>`;
+}
+
+function formatToggle(format: AnswerFormat | "all", context: "practice" | "sequence" | "report") {
   const options: [AnswerFormat | "all",string][] = [["multiple-choice","Multiple choice"],["direct-recall","Direct recall"]];
   if (context === "report") options.push(["all","All formats"]);
   return `<div class="format-selector"><span>Answer format</span><div class="segmented format-toggle" role="group" aria-label="Answer format">${options.map(([id,label]) => `<button data-${context}-format="${id}" aria-pressed="${format === id}" class="${format === id ? "selected" : ""}">${label}</button>`).join("")}</div></div>`;
@@ -195,6 +203,10 @@ function formatToggle(format: AnswerFormat | "all", context: "practice" | "repor
 function answerControls() {
   if (!q) return "";
   if (q.answerFormat === "multiple-choice") return `<div class="answers" aria-label="Answer choices">${q.options.map((p, i) => `<button class="answer ${q!.selected.includes(p) && p !== q!.position ? "wrong" : ""} ${q!.done && p === q!.position ? "correct" : ""}" data-answer="${p}" aria-label="${q!.direction === "card-number" ? `Position ${p}` : cardName(p)}" ${paused || q!.done || q!.selected.includes(p) ? "disabled" : ""}>${q!.direction === "card-number" ? numberCard(p) : cardImage(p)}<span class="key-label">${i + 1}</span></button>`).join("")}</div>`;
+  return `<section class="recall-controls" aria-label="Direct recall answer">${directAnswerContent()}</section>`;
+}
+function directAnswerContent() {
+  if (!q) return "";
   const disabled = paused || q.done ? "disabled" : "";
   const position = recallPosition(q.direction,q.input);
   const ready = !paused && !q.done && position !== null && !q.selected.includes(position);
@@ -204,14 +216,16 @@ function answerControls() {
     ? `<div class="digit-grid" role="group" aria-label="Position digits">${"1234567890".split("").map(d => `<button class="recall-tile digit-tile" data-digit="${d}" aria-label="Digit ${d}" ${disabled}>${d}</button>`).join("")}</div><div class="recall-edit"><button data-action="recall-backspace" aria-label="Delete last digit" ${disabled || (!q.input.digits ? "disabled" : "")}>⌫</button><button data-action="recall-clear" ${disabled}>Clear</button></div>`
     : `<div class="rank-grid" role="group" aria-label="Card rank">${RANKS.split("").map(rank => `<button class="recall-tile ${q!.input.rank === rank ? "selected" : ""}" data-rank="${rank}" aria-label="${rankNames[rank] ?? "Rank "+rank}" aria-pressed="${q!.input.rank === rank}" ${disabled}>${rank === "T" ? "10" : rank}</button>`).join("")}</div><div class="suit-grid" role="group" aria-label="Card suit">${Object.keys(SUITS).map(suit => `<button class="recall-tile suit-tile ${suit === "D" || suit === "H" ? "red-suit" : ""} ${q!.input.suit === suit ? "selected" : ""}" data-suit="${suit}" aria-label="${SUITS[suit]}" aria-pressed="${q!.input.suit === suit}" ${disabled}>${suits[suit]}</button>`).join("")}</div>`;
   const display = q.done ? q.direction === "card-number" ? String(q.position).padStart(2,"0") : cardName(q.position) : recallDisplay(q.direction,q.input);
-  return `<section class="recall-controls" aria-label="Direct recall answer"><div class="recall-entry" aria-live="polite"><span>${q.done ? "Answer" : "Your answer"}</span><strong>${display}</strong></div>${controls}<button class="primary recall-submit" data-action="recall-submit" ${ready ? "" : "disabled"}>Check answer</button><p class="recall-help">${q.done ? "Answer revealed." : position !== null && q.selected.includes(position) ? "Already tried. Change your answer." : q.direction === "card-number" ? "Enter 1–52. Leading zeros are accepted." : "Choose a rank and suit in either order."}</p></section>`;
+  return `<div class="recall-entry" aria-live="polite"><span>${q.done ? "Answer" : "Your answer"}</span><strong>${display}</strong></div>${controls}<button class="primary recall-submit" data-action="recall-submit" ${ready ? "" : "disabled"}>Check answer</button><p class="recall-help">${q.done ? "Answer revealed." : position !== null && q.selected.includes(position) ? "Already tried. Change your answer." : q.direction === "card-number" ? "Enter 1–52. Leading zeros are accepted." : "Choose a rank and suit in either order."}</p>`;
 }
 function changeRecallInput(action: RecallAction) {
   if (!q || q.answerFormat !== "direct-recall" || paused || q.done || storageConflict) return;
   tick();
   if (paused || !q) return;
   q.input = editRecallInput(q.input,action);
-  render();
+  const panel = document.querySelector<HTMLElement>(".recall-controls");
+  if (panel) {panel.innerHTML = directAnswerContent(); bind(panel);}
+  else render();
   const selector = action.type === "digit" || action.type === "rank" || action.type === "suit" ? `[data-${action.type}="${CSS.escape(action.value)}"]` : `[data-action="recall-${action.type}"]`;
   document.querySelector<HTMLButtonElement>(selector)?.focus({preventScroll:true});
 }
@@ -233,11 +247,11 @@ function newQuestion() {
   recent.push(position);
   q = {
     id: crypto.randomUUID(),
-    answerFormat: isSequence(direction) ? "multiple-choice" : formatOf(active!),
+    answerFormat: formatOf(active!),
     input: emptyRecallInput(),
     position,
     direction,
-    options: choices(position, direction),
+    options: formatOf(active!) === "multiple-choice" ? choices(position, direction) : [],
     elapsed: 0,
     wrong: 0,
     hint: false,
@@ -265,7 +279,7 @@ function start(mode: Mode = data.settings.mode, startPosition = 1) {
     startedAt: Date.now(),
     endedAt: null,
     mode,
-    answerFormat: isSequence(mode) ? "multiple-choice" : formatOf(data.settings),
+    answerFormat: isSequence(mode) ? data.settings.sequenceAnswerFormat ?? "multiple-choice" : formatOf(data.settings),
     duration: isSequence(mode) ? 0 : data.settings.minutes * 60000,
     ...(isSequence(mode) ? {runTarget:52, startPosition, elapsedMs:0, completed:false} : {}),
   };
@@ -338,7 +352,8 @@ function finish(completed = false) {
   const session = active;
   const id = active.id;
   filter = isSequence(active.mode) ? "sequence" : "all";
-  if (!isSequence(active.mode)) reportFormat = formatOf(active);
+  if (isSequence(active.mode)) sequenceReportFormat = formatOf(active);
+  else reportFormat = formatOf(active);
   active.endedAt = Date.now();
   if (active.runTarget) {active.elapsedMs = sessionElapsed; active.completed = completed;}
   save();
@@ -407,6 +422,7 @@ window.addEventListener("storage", (e) => {
       data = e.newValue ? validate(JSON.parse(e.newValue)) : emptyData();
       period = data.settings.statsPeriod ?? "7";
       reportFormat = formatOf(data.settings);
+      sequenceReportFormat = data.settings.sequenceAnswerFormat ?? "multiple-choice";
     } catch {
       storageProblem =
         "Another tab changed your saved data. Reload before continuing.";
@@ -414,11 +430,12 @@ window.addEventListener("storage", (e) => {
   render();
 });
 function deckTabs() {
-  return `<div class="segmented deck-tabs" aria-label="Deck mode"><button data-deck-mode="quiz" class="${deckMode === "quiz" ? "selected" : ""}" aria-pressed="${deckMode === "quiz"}">Sequence quiz</button><button data-deck-mode="browse" class="${deckMode === "browse" ? "selected" : ""}" aria-pressed="${deckMode === "browse"}">Browse</button></div>`;
+  return `<div class="segmented deck-tabs" role="group" aria-label="Deck mode"><button data-deck-mode="quiz" class="${deckMode === "quiz" ? "selected" : ""}" aria-pressed="${deckMode === "quiz"}">Sequence quiz</button><button data-deck-mode="browse" class="${deckMode === "browse" ? "selected" : ""}" aria-pressed="${deckMode === "browse"}">Browse</button></div>`;
 }
 function deck() {
   if (deckMode === "quiz") {
-    chrome(`${deckTabs()}<section class="start-panel sequence-setup"><div class="segmented" aria-label="Sequence direction">${(["sequence-forward", "sequence-backward"] as SequenceDirection[]).map(dir => `<button data-sequence-direction="${dir}" class="${sequenceDirection === dir ? "selected" : ""}" aria-pressed="${sequenceDirection === dir}">${dir === "sequence-forward" ? "Forward →" : "← Backward"}</button>`).join("")}</div><label class="session-length">Start at<select id="sequence-start"><option value="beginning" ${sequenceStart === "beginning" ? "selected" : ""}>${sequenceDirection === "sequence-forward" ? "First card" : "Last card"}</option><option value="random" ${sequenceStart === "random" ? "selected" : ""}>Random position</option></select></label><button class="primary start" data-action="start-sequence" ${storageProblem ? "disabled" : ""}>Start full-deck run <span>→</span></button><p class="start-note">Choose the ${sequenceDirection === "sequence-forward" ? "next" : "previous"} card. 52 answers · timed run. Each wrong choice or reveal adds 5s to scored time.</p></section>`);
+    const format = data.settings.sequenceAnswerFormat ?? "multiple-choice";
+    chrome(`${deckTabs()}<section class="start-panel practice-home sequence-setup"><span class="control-label">Direction</span><div class="segmented practice-toggle two-options" role="group" aria-label="Sequence direction">${(["sequence-forward", "sequence-backward"] as SequenceDirection[]).map(dir => `<button data-sequence-direction="${dir}" class="${sequenceDirection === dir ? "selected" : ""}" aria-pressed="${sequenceDirection === dir}">${dir === "sequence-forward" ? "Forward" : "Backward"}</button>`).join("")}</div>${formatToggle(format,"sequence")}<p class="format-note">${format === "direct-recall" ? "Recall each card with rank + suit." : "Choose each card from five options."}</p><label class="session-length" for="sequence-start">Start at<select id="sequence-start"><option value="beginning" ${sequenceStart === "beginning" ? "selected" : ""}>${sequenceDirection === "sequence-forward" ? "First card" : "Last card"}</option><option value="random" ${sequenceStart === "random" ? "selected" : ""}>Random position</option></select></label><button class="primary start" data-action="start-sequence" ${storageProblem ? "disabled" : ""}>Start 52-card run</button><p class="start-note">52 answers · timed run · +5 seconds per miss or reveal</p></section>`);
     return;
   }
   chrome(
@@ -476,7 +493,7 @@ function filtered() {
     (a) =>
       (filter === "all" ? !isSequence(a.direction) : filter === "sequence" ? isSequence(a.direction) : a.direction === filter) &&
       (period === "all" || a.at >= Date.now() - Number(period) * 86400000) &&
-      (filter.startsWith("sequence") || reportFormat === "all" || formatOf(a) === reportFormat),
+      (reportAnswerFormat() === "all" || formatOf(a) === reportAnswerFormat()),
   );
 }
 function trend(attempts: Attempt[]): string {
@@ -501,23 +518,24 @@ function trend(attempts: Attempt[]): string {
 }
 function runResults(session: Session) {
   const r = sequenceResult(session, data.attempts);
-  return `<h2>${r.complete ? "Deck completed" : "Run ended early"}</h2><p>${modeName(session.mode)} · ${r.total}/52 answered · start position ${session.startPosition}</p><div class="summary-grid"><div><strong>${runTime(r.elapsedMs)}</strong><span>Active time</span></div><div><strong>${r.accuracy.toFixed(0)}%</strong><span>First-answer accuracy</span></div><div><strong>${runTime(r.scoredMs)}</strong><span>Scored time</span></div><div><strong>+${r.penalties * 5}s</strong><span>${r.penalties} penalties</span></div></div><p class="muted">5 seconds per wrong selection or reveal. Paused time is excluded. ${r.complete ? "Completed runs count toward personal bests." : "Partial runs do not count toward personal bests."}</p>`;
+  return `<h2>${r.complete ? "Deck completed" : "Run ended early"}</h2><p>${modeName(session.mode)} · ${formatName(formatOf(session))} · ${r.total}/52 answered · start position ${session.startPosition}</p><div class="summary-grid"><div><strong>${runTime(r.elapsedMs)}</strong><span>Active time</span></div><div><strong>${r.accuracy.toFixed(0)}%</strong><span>First-answer accuracy</span></div><div><strong>${runTime(r.scoredMs)}</strong><span>Scored time</span></div><div><strong>+${r.penalties * 5}s</strong><span>${r.penalties} penalties</span></div></div><p class="muted">5 seconds per wrong selection or reveal. Paused time is excluded. ${r.complete ? "Completed runs count toward personal bests." : "Partial runs do not count toward personal bests."}</p>`;
 }
 function sequenceBests() {
-  return `<section class="report-section"><h2>Full-deck runs</h2><div class="summary-grid">${(["sequence-forward", "sequence-backward"] as SequenceDirection[]).filter(dir => filter === "sequence" || filter === dir).map(dir => {
-    const runs = data.sessions.filter(s => s.mode === dir && (period === "all" || s.startedAt >= Date.now() - Number(period) * 86400000)).map(s => ({s,r:sequenceResult(s,data.attempts)})).filter(x => x.r.complete);
+  const formats: AnswerFormat[] = sequenceReportFormat === "all" ? ["multiple-choice","direct-recall"] : [sequenceReportFormat];
+  const directions = (["sequence-forward","sequence-backward"] as SequenceDirection[]).filter(dir => filter === "sequence" || filter === dir);
+  return `<section class="report-section"><h2>Full-deck runs</h2><div class="summary-grid">${directions.flatMap(dir => formats.map(format => {
+    const runs = sequenceRuns(data.sessions,data.attempts,dir,format,period);
     const best = [...runs].sort((a,b) => a.r.scoredMs! - b.r.scoredMs!)[0];
     const latest = runs.at(-1);
-    return `<div><span>${dir === "sequence-forward" ? "Forward" : "Backward"} · ${runs.length} completed</span><strong>${best ? runTime(best.r.scoredMs) : "—"}</strong><span>Best scored time</span>${best ? `<p class="muted compact">${runTime(best.r.elapsedMs)} raw · ${best.r.accuracy.toFixed(0)}% accuracy</p>` : ""}${latest ? `<p class="muted compact">Latest: ${runTime(latest.r.scoredMs)} · ${latest.r.accuracy.toFixed(0)}%</p>` : ""}</div>`;
-  }).join("")} </div></section>`;
+    return `<div><span>${dir === "sequence-forward" ? "Forward" : "Backward"} · ${formatName(format)}</span><strong>${best ? runTime(best.r.scoredMs) : "—"}</strong><span>Best scored time · ${runs.length} completed</span>${best ? `<p class="muted compact">${runTime(best.r.elapsedMs)} raw · ${best.r.accuracy.toFixed(0)}% accuracy</p>` : ""}${latest ? `<p class="muted compact">Latest: ${runTime(latest.r.scoredMs)}</p>` : ""}</div>`;
+  })).join("")}</div></section>`;
 }
 function sequenceTrend() {
-  const runs = data.sessions.filter(s => (filter === "sequence" ? isSequence(s.mode) : s.mode === filter) && (period === "all" || s.startedAt >= Date.now() - Number(period) * 86400000))
-    .map(s => ({s,r:sequenceResult(s,data.attempts)})).filter(x => x.r.complete).slice(-20);
+  const runs = sequenceRuns(data.sessions,data.attempts,filter as SequenceDirection | "sequence",sequenceReportFormat,period).slice(-20);
   if (!runs.length) return '<p class="muted">Complete a full-deck run to start tracking speed and accuracy over time.</p>';
   const max = Math.max(...runs.map(x => x.r.scoredMs!), 1000);
   const point = (i: number, ms: number) => `${30 + i * 320 / Math.max(1,runs.length-1)},${125 - ms / max * 100}`;
-  return `<div class="chart run-trend"><div class="chart-title"><h2>Sequence speed over time</h2><span>Last ${runs.length} completed runs</span></div><p class="muted compact">Lower is faster. Blue: raw time · light blue: scored time.</p><svg viewBox="0 0 380 160" role="img" aria-label="Raw and penalty-adjusted completion times; exact times and accuracy appear below"><line x1="30" x2="350" y1="125" y2="125" stroke="#2c3e5a"/><polyline points="${runs.map((x,i)=>point(i,x.r.elapsedMs!)).join(" ")}" fill="none" stroke="#3979cb" stroke-width="2"/><polyline points="${runs.map((x,i)=>point(i,x.r.scoredMs!)).join(" ")}" fill="none" stroke="#b3d3ff" stroke-width="2"/>${runs.map((x,i)=>`<circle cx="${point(i,x.r.scoredMs!).split(",")[0]}" cy="${point(i,x.r.scoredMs!).split(",")[1]}" r="3" fill="#b3d3ff"><title>${fmtDate(x.s.startedAt)}: ${runTime(x.r.scoredMs)} scored, ${x.r.accuracy.toFixed(0)}% accuracy</title></circle>`).join("")}<text x="30" y="150" font-size="10" fill="#9aabc6">${fmtDate(runs[0].s.startedAt)}</text><text x="310" y="150" font-size="10" fill="#9aabc6">Latest</text></svg><div class="table-wrap"><table><thead><tr><th>Run</th><th>Raw</th><th>Scored</th><th>Accuracy</th></tr></thead><tbody>${[...runs].reverse().map(({s,r})=>`<tr><td>${fmtDate(s.startedAt)}<br/><small>${s.mode === "sequence-forward" ? "Forward" : "Backward"}</small></td><td>${runTime(r.elapsedMs)}</td><td>${runTime(r.scoredMs)}</td><td>${r.accuracy.toFixed(0)}%</td></tr>`).join("")}</tbody></table></div></div>`;
+  return `<div class="chart run-trend"><div class="chart-title"><h2>Sequence speed over time</h2><span>Last ${runs.length} completed runs</span></div><p class="muted compact">Lower is faster. Blue: raw time · light blue: scored time.${sequenceReportFormat === "all" ? " Filter by format to compare similar runs." : ""}</p><svg viewBox="0 0 380 160" role="img" aria-label="Raw and penalty-adjusted completion times; exact times and accuracy appear below"><line x1="30" x2="350" y1="125" y2="125" stroke="#2c3e5a"/><polyline points="${runs.map((x,i)=>point(i,x.r.elapsedMs!)).join(" ")}" fill="none" stroke="#3979cb" stroke-width="2"/><polyline points="${runs.map((x,i)=>point(i,x.r.scoredMs!)).join(" ")}" fill="none" stroke="#b3d3ff" stroke-width="2"/>${runs.map((x,i)=>`<circle cx="${point(i,x.r.scoredMs!).split(",")[0]}" cy="${point(i,x.r.scoredMs!).split(",")[1]}" r="3" fill="#b3d3ff"><title>${fmtDate(x.s.startedAt)} · ${formatName(formatOf(x.s))}: ${runTime(x.r.scoredMs)} scored, ${x.r.accuracy.toFixed(0)}% accuracy</title></circle>`).join("")}<text x="30" y="150" font-size="10" fill="#9aabc6">${fmtDate(runs[0].s.startedAt)}</text><text x="310" y="150" font-size="10" fill="#9aabc6">Latest</text></svg><div class="table-wrap"><table><thead><tr><th>Run</th><th>Raw</th><th>Scored</th><th>Accuracy</th></tr></thead><tbody>${[...runs].reverse().map(({s,r})=>`<tr><td>${fmtDate(s.startedAt)}<br/><small>${s.mode === "sequence-forward" ? "Forward" : "Backward"} · ${formatName(formatOf(s))}</small></td><td>${runTime(r.elapsedMs)}</td><td>${runTime(r.scoredMs)}</td><td>${r.accuracy.toFixed(0)}%</td></tr>`).join("")}</tbody></table></div></div>`;
 }
 function directionInsights() {
   const evidence = data.attempts.filter(a => !isSequence(a.direction) && (period === "all" || a.at >= Date.now()-Number(period)*86400000) && (reportFormat === "all" || formatOf(a) === reportFormat));
@@ -542,6 +560,12 @@ function perCardResults(attempts: Attempt[]) {
     cardRanking(attempts,filter as "all" | "card-number" | "number-card",data.settings.speedTarget,cardSort);
   return `<section class="report-section"><div class="chart-title"><h2>Per-card results</h2><span>Tap a card for details</span></div>${sequence ? "" : `<label class="card-sort" for="card-sort">Sort by<select id="card-sort">${([["position","Position"],["mastery","Weakest recall"],["speed","Slowest recent recall"],["accuracy","Lowest recent accuracy"],["misses","Latest first miss"]] as const).map(([id,label]) => `<option value="${id}" ${cardSort === id ? "selected" : ""}>${label}</option>`).join("")}</select></label>`}<p class="muted compact">${sequence ? "Forward and backward sequence results." : "Recall labels and sorting use the last 12 eligible answers per direction in this period. Tap for lifetime comparison. Practice uses full history."}${filter === "all" ? " Mixed shows the weakest tested direction; each skill stays separate." : ""} Timing excludes interruptions, recent exposure, and times over two minutes.</p><div class="table-wrap"><table class="deck-table"><thead><tr><th>Position / card</th><th>Answers</th><th>Accuracy</th><th>Median</th></tr></thead><tbody>${rows.map(({position,stats:ss,weakest:m}) => `<tr><td><button class="card-detail" data-position="${position}"><span class="position-number">${position}</span><span>${cardName(position)}${m ? `<small class="recall-label" title="Recall score ${m.score.toFixed(0)}/100">${m.category}${filter === "all" ? m.direction === "card-number" ? " · C → #" : " · # → C" : ""}${m.consistency === "Variable" ? " · variable" : ""}</small>` : ""}</span></button></td><td>${ss.total || "—"}${!sequence && ss.total ? `<small class="sample-count">${ss.timedCount} timed</small>` : ""}</td><td><span class="accuracy ${ss.eligibleTotal && ss.accuracy < 75 ? "low" : ""}">${ss.eligibleTotal ? ss.accuracy.toFixed(0) + "%" : "—"}</span></td><td>${fmtTime(ss.medianMs)}</td></tr>`).join("")}</tbody></table></div></section>`;
 }
+function emptyResults() {
+  const sequence = filter.startsWith("sequence");
+  const action = sequence ? 'data-action="sequence-setup"' : 'data-view="practice"';
+  return `<div class="empty"><h2>No results in this view</h2><p>Complete a session to start tracking your progress.</p><button class="primary" ${action}>${sequence ? "Go to sequence quiz" : "Go to practice"}</button></div>`;
+}
+
 function progress() {
   const attempts = filtered(),
     s = summary(filter.startsWith("sequence") ? attempts.map(a => ({...a,recentExposure:false})) : attempts),
@@ -552,9 +576,9 @@ function progress() {
   const sessions = [...data.sessions]
     .reverse()
     .filter(session => (filter === "all" ? !isSequence(session.mode) : filter === "sequence" ? isSequence(session.mode) : session.mode === filter || (!isSequence(filter) && session.mode === "mixed")) &&
-      (period === "all" || session.startedAt >= Date.now() - Number(period) * 86400000) && (filter.startsWith("sequence") || reportFormat === "all" || formatOf(session) === reportFormat));
+      (period === "all" || session.startedAt >= Date.now() - Number(period) * 86400000) && (reportAnswerFormat() === "all" || formatOf(session) === reportAnswerFormat()));
   chrome(
-    `<section class="page-heading"><h1>Progress</h1></section><section class="progress-controls"><label class="progress-quiz-label" for="stats-direction"><span>Quiz type</span><select id="stats-direction"><option value="sequence" ${filter.startsWith("sequence") ? "selected" : ""}>Sequence quiz</option><option value="all" ${!filter.startsWith("sequence") ? "selected" : ""}>Position practice</option></select></label><div class="segmented practice-toggle position-directions" role="group" aria-label="${filter.startsWith("sequence") ? "Sequence direction" : "Practice type"}">${(filter.startsWith("sequence") ? [["sequence-forward","Forward"],["sequence-backward","Backward"],["sequence","Combined"]] : [["card-number","Card → number"],["number-card","Number → card"],["all","Mixed"]]).map(([id,label]) => `<button data-stats-direction="${id}" aria-pressed="${filter === id}" class="${filter === id ? "selected" : ""}">${label}</button>`).join("")}</div>${filter.startsWith("sequence") ? "" : formatToggle(reportFormat,"report")}<div class="practice-stats-toolbar"><span>Recent results</span><div class="segmented stats-period-toggle" role="group" aria-label="Statistics period">${[["7","7 days"],["30","30 days"],["all","All time"]].map(([id,label]) => `<button data-stats-period="${id}" aria-pressed="${period === id}" class="${period === id ? "selected" : ""}">${label}</button>`).join("")}</div></div></section><div class="summary-grid stat-cards"><div><strong>${s.eligibleTotal ? s.accuracy.toFixed(0) + "%" : "—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median correct time (sec)</span></div><div><strong>${s.total}</strong><span>Questions answered</span></div><div><strong>${slow.length ? Math.round((within / slow.length) * 100) + "%" : "—"}</strong><span>Within ${data.settings.speedTarget}s target</span></div></div>${!s.total ? '<div class="empty"><span>♧</span><h2>No practice results</h2><p>Practice results will appear here, with each direction tracked separately.</p><button class="primary" data-view="practice">Go to practice →</button></div>' : `${filter.startsWith("sequence") ? sequenceTrend() : trend(attempts)}<div class="report-notes"><span>${s.wrong} first-answer misses</span><span>${s.hints} questions with hints</span><span>${new Set(attempts.map((a) => a.position)).size}/52 cards practiced</span></div>`}${filter.startsWith("sequence") ? sequenceBests() : directionInsights()}${perCardResults(attempts)}<section class="report-section"><h2>Session history</h2>${
+    `<section class="page-heading"><h1>Progress</h1></section><section class="progress-controls"><label class="progress-quiz-label" for="stats-direction"><span>Quiz type</span><select id="stats-direction"><option value="sequence" ${filter.startsWith("sequence") ? "selected" : ""}>Sequence quiz</option><option value="all" ${!filter.startsWith("sequence") ? "selected" : ""}>Position practice</option></select></label><div class="segmented practice-toggle position-directions" role="group" aria-label="${filter.startsWith("sequence") ? "Sequence direction" : "Practice type"}">${(filter.startsWith("sequence") ? [["sequence-forward","Forward"],["sequence-backward","Backward"],["sequence","Combined"]] : [["card-number","Card → number"],["number-card","Number → card"],["all","Mixed"]]).map(([id,label]) => `<button data-stats-direction="${id}" aria-pressed="${filter === id}" class="${filter === id ? "selected" : ""}">${label}</button>`).join("")}</div>${formatToggle(reportAnswerFormat(),"report")}<div class="practice-stats-toolbar"><span>Recent results</span><div class="segmented stats-period-toggle" role="group" aria-label="Statistics period">${[["7","7 days"],["30","30 days"],["all","All time"]].map(([id,label]) => `<button data-stats-period="${id}" aria-pressed="${period === id}" class="${period === id ? "selected" : ""}">${label}</button>`).join("")}</div></div></section><div class="summary-grid stat-cards"><div><strong>${s.eligibleTotal ? s.accuracy.toFixed(0) + "%" : "—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median correct time (sec)</span></div><div><strong>${s.total}</strong><span>Questions answered</span></div><div><strong>${slow.length ? Math.round((within / slow.length) * 100) + "%" : "—"}</strong><span>Within ${data.settings.speedTarget}s target</span></div></div>${!s.total ? emptyResults() : `${filter.startsWith("sequence") ? sequenceTrend() : trend(attempts)}<div class="report-notes"><span>${s.wrong} first-answer misses</span><span>${s.hints} questions with hints</span><span>${new Set(attempts.map((a) => a.position)).size}/52 cards practiced</span></div>`}${filter.startsWith("sequence") ? sequenceBests() : directionInsights()}${perCardResults(attempts)}<section class="report-section"><h2>Session history</h2>${
       sessions.length
         ? `<div class="history-list">${sessions
             .slice(0, historyLimit)
@@ -562,19 +586,19 @@ function progress() {
               const sessionAttempts = attempts.filter((a) => a.sessionId === session.id);
               const ss = summary(sessionAttempts);
               const run = session.runTarget ? sequenceResult(session, data.attempts) : null;
-              return `<div class="history-entry"><button class="history-row" data-session="${esc(session.id)}"><div><strong>${fmtDate(session.startedAt)} · ${new Date(session.startedAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}</strong><span>${!isSequence(filter) && filter !== "all" ? modeName(filter as Direction) : modeName(session.mode)} · ${run ? `${run.total}/52 · ${run.complete ? "complete" : "partial"}` : `${session.duration / 60000} min · ${ss.total} answered · ${formatName(formatOf(session))}`}</span></div><div><strong>${run ? run.accuracy.toFixed(0) + "%" : ss.eligibleTotal ? ss.accuracy.toFixed(0) + "%" : "—"}</strong><span>${run ? runTime(run.scoredMs) : fmtTime(ss.medianMs)}</span></div></button><button class="delete-session" data-delete-session="${esc(session.id)}" aria-label="Delete session from ${esc(fmtDate(session.startedAt))}">${uiIcon("trash")}</button></div>`;
+              return `<div class="history-entry"><button class="history-row" data-session="${esc(session.id)}"><div><strong>${fmtDate(session.startedAt)} · ${new Date(session.startedAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}</strong><span>${!isSequence(filter) && filter !== "all" ? modeName(filter as Direction) : modeName(session.mode)} · ${run ? `${run.total}/52 · ${run.complete ? "complete" : "partial"} · ${formatName(formatOf(session))}` : `${session.duration / 60000} min · ${ss.total} answered · ${formatName(formatOf(session))}`}</span></div><div><strong>${run ? run.accuracy.toFixed(0) + "%" : ss.eligibleTotal ? ss.accuracy.toFixed(0) + "%" : "—"}</strong><span>${run ? runTime(run.scoredMs) : fmtTime(ss.medianMs)}</span></div></button><button class="delete-session" data-delete-session="${esc(session.id)}" aria-label="Delete session from ${esc(fmtDate(session.startedAt))}">${uiIcon("trash")}</button></div>`;
             })
             .join(
               "",
             )}</div>${sessions.length > historyLimit ? '<button class="text-button" data-action="more-history">Show more sessions</button>' : ""}`
         : '<p class="muted">No sessions in this period.</p>'
-    }</section>${recentlyDeleted()}<div class="export-row"><button class="text-button" data-action="export">↓ Export backup</button><button class="text-button" data-action="csv">↓ Export results CSV</button></div><p class="footnote">Independent accuracy excludes recent exposure; hints and reveals count as failures. Timing also excludes interruptions. Multiple choice measures recognition; fast guesses can still be correct.</p>`,
+    }</section>${recentlyDeleted()}<div class="export-row"><button class="text-button" data-action="export">↓ Export backup</button><button class="text-button" data-action="csv">↓ Export results CSV</button></div><p class="footnote">Independent accuracy excludes recent exposure; hints and reveals count as failures. Timing also excludes interruptions. ${reportAnswerFormat() === "all" ? "Choose one answer format for comparable timing." : reportAnswerFormat() === "direct-recall" ? "Direct recall timing includes entering and checking the answer." : "Multiple choice measures recognition; fast guesses can still be correct."}</p>`,
   );
 }
 function recentlyDeleted() {
   const deleted = [...(data.deletedSessions ?? [])].sort((a,b) => b.deletedAt-a.deletedAt);
   if (!deleted.length) return "";
-  return `<details class="report-section deleted-history" open><summary>Recently deleted (${deleted.length})</summary><p class="muted compact">Excluded from all statistics. Restore a session to include it again.</p>${deleted.map(({session, attempts}) => `<div class="history-entry"><div class="deleted-session-info"><strong>${fmtDate(session.startedAt)} · ${new Date(session.startedAt).toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"})}</strong><span>${modeName(session.mode)} · ${session.runTarget ? attempts.length + "/52" : session.duration / 60000 + " min · " + attempts.length + " answered"}</span></div><button class="secondary restore-session" data-restore-session="${esc(session.id)}">Restore</button></div>`).join("")}</details>`;
+  return `<details class="report-section deleted-history" open><summary>Recently deleted (${deleted.length})</summary><p class="muted compact">Excluded from all statistics. Restore a session to include it again.</p>${deleted.map(({session, attempts}) => `<div class="history-entry"><div class="deleted-session-info"><strong>${fmtDate(session.startedAt)} · ${new Date(session.startedAt).toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"})}</strong><span>${modeName(session.mode)} · ${formatName(formatOf(session))} · ${session.runTarget ? attempts.length + "/52" : session.duration / 60000 + " min · " + attempts.length + " answered"}</span></div><button class="secondary restore-session" data-restore-session="${esc(session.id)}">Restore</button></div>`).join("")}</details>`;
 }
 function confirmRestoreSession(id: string) {
   if (active || storageConflict || storageProblem) return;
@@ -590,7 +614,8 @@ function confirmRestoreSession(id: string) {
     return;
   }
   filter = isSequence(session.mode) ? "sequence" : "all";
-  reportFormat = formatOf(session);
+  if (isSequence(session.mode)) sequenceReportFormat = formatOf(session);
+  else reportFormat = formatOf(session);
   period = "all";
   recent = [];
   lastExposure.clear();
@@ -619,6 +644,7 @@ function confirmDeleteSession(id: string) {
   render();
 }
 function detail(position: number) {
+  const format = reportAnswerFormat();
   const attempts = filtered().filter((a) => a.position === position);
   showDialog(
     `<div class="eyebrow">POSITION ${position}</div><h2>${cardName(position)}</h2>${(
@@ -626,9 +652,9 @@ function detail(position: number) {
     )
       .map((dir) => {
         const ss = summary(attempts.filter((a) => a.direction === dir)),
-          m = isSequence(dir) ? data.memory[key(position,dir)] : reportFormat === "all" ? undefined : data.memory[key(position, dir,reportFormat)];
-        const model = isSequence(dir) ? null : mappingModel(data.attempts,position,dir,data.settings.speedTarget,Date.now(),reportFormat === "all" ? undefined : reportFormat);
-        return `<div class="detail-direction"><h3>${modeName(dir)}</h3><p>${ss.total} answers · ${ss.eligibleTotal ? ss.accuracy.toFixed(0) + "%" : "—"} independent · ${fmtTime(ss.medianMs)} median in selected period</p>${model ? `<div class="recall-detail"><strong>Current recall: ${model.category} · ${model.score.toFixed(0)}/100</strong><p>Last ${model.recent.eligibleTotal} eligible answers: ${model.recent.eligibleTotal ? model.recent.accuracy.toFixed(0)+"%" : "—"} independent · ${fmtTime(model.recent.medianMs)} median · ${model.recent.timedCount} timed</p><p>Lifetime: ${model.lifetime.eligibleTotal ? model.lifetime.accuracy.toFixed(0)+"%" : "—"} independent · ${fmtTime(model.lifetime.medianMs)} median · ${model.lifetime.timedCount} timed</p><p>${model.consistency} · recent P75 ${fmtTime(model.p75Ms)} · ${model.recentMisses} first misses · ${model.recentAssists} assisted</p><small>${model.confidence < 1 || model.timingConfidence < 1 ? "Still building evidence. " : ""}Automatic needs consistent recall within ${data.settings.speedTarget / 2}s; fast is within your ${data.settings.speedTarget}s target. Timing exclusions preserve raw history.</small></div>` : ""}<p class="muted">${reportFormat === "all" && !isSequence(dir) ? "Choose an answer format to see its review date." : m ? `Next review: ${m.due <= Date.now() ? "due now" : new Date(m.due).toLocaleString()}` : "Not practiced yet"}</p></div>`;
+          m = format === "all" ? undefined : data.memory[key(position, dir,format)];
+        const model = isSequence(dir) ? null : mappingModel(data.attempts,position,dir,data.settings.speedTarget,Date.now(),format === "all" ? undefined : format);
+        return `<div class="detail-direction"><h3>${modeName(dir)}</h3><p>${ss.total} answers · ${ss.eligibleTotal ? ss.accuracy.toFixed(0) + "%" : "—"} independent · ${fmtTime(ss.medianMs)} median in selected period</p>${model ? `<div class="recall-detail"><strong>Current recall: ${model.category} · ${model.score.toFixed(0)}/100</strong><p>Last ${model.recent.eligibleTotal} eligible answers: ${model.recent.eligibleTotal ? model.recent.accuracy.toFixed(0)+"%" : "—"} independent · ${fmtTime(model.recent.medianMs)} median · ${model.recent.timedCount} timed</p><p>Lifetime: ${model.lifetime.eligibleTotal ? model.lifetime.accuracy.toFixed(0)+"%" : "—"} independent · ${fmtTime(model.lifetime.medianMs)} median · ${model.lifetime.timedCount} timed</p><p>${model.consistency} · recent P75 ${fmtTime(model.p75Ms)} · ${model.recentMisses} first misses · ${model.recentAssists} assisted</p><small>${model.confidence < 1 || model.timingConfidence < 1 ? "Still building evidence. " : ""}Automatic needs consistent recall within ${data.settings.speedTarget / 2}s; fast is within your ${data.settings.speedTarget}s target. Timing exclusions preserve raw history.</small></div>` : ""}<p class="muted">${format === "all" ? "Choose an answer format to see its review date." : m ? `Next review: ${m.due <= Date.now() ? "due now" : new Date(m.due).toLocaleString()}` : "Not practiced yet"}</p></div>`;
       })
       .join(
         "",
@@ -636,7 +662,7 @@ function detail(position: number) {
   );
 }
 function attemptList(attempts: Attempt[]) {
-  return `<div class="attempt-list">${attempts.map((a) => `<div><strong>${fmtDate(a.at)} · ${modeName(a.direction)}${isSequence(a.direction) ? "" : " · "+formatName(formatOf(a))}</strong><span>${a.revealed ? "Revealed" : a.hint ? "Assisted" : a.firstCorrect ? "Correct first try" : `${a.wrong} wrong answer${a.wrong === 1 ? "" : "s"}`} · ${fmtTime(a.elapsedMs)}${a.interrupted ? " · interrupted" : ""}${a.recentExposure ? " · recent exposure" : ""}${a.finalResult ? ` · ${a.finalResult}${a.finalElapsedMs !== undefined ? ` after ${fmtTime(a.finalElapsedMs)}` : ""}` : " · final outcome not recorded"}${a.elapsedMs !== null && (a.elapsedMs > 120000 || a.elapsedMs <= 0) ? " · excluded from recall timing" : ""}</span></div>`).join("") || '<p class="muted">No attempts yet.</p>'}</div>`;
+  return `<div class="attempt-list">${attempts.map((a) => `<div><strong>${fmtDate(a.at)} · ${modeName(a.direction)} · ${formatName(formatOf(a))}</strong><span>${a.revealed ? "Revealed" : a.hint ? "Assisted" : a.firstCorrect ? "Correct first try" : `${a.wrong} wrong answer${a.wrong === 1 ? "" : "s"}`} · ${fmtTime(a.elapsedMs)}${a.interrupted ? " · interrupted" : ""}${a.recentExposure ? " · recent exposure" : ""}${a.finalResult ? ` · ${a.finalResult}${a.finalElapsedMs !== undefined ? ` after ${fmtTime(a.finalElapsedMs)}` : ""}` : " · final outcome not recorded"}${a.elapsedMs !== null && (a.elapsedMs > 120000 || a.elapsedMs <= 0) ? " · excluded from recall timing" : ""}</span></div>`).join("") || '<p class="muted">No attempts yet.</p>'}</div>`;
 }
 function settings() {
   chrome(
@@ -747,7 +773,8 @@ function bind(root: ParentNode = app) {
     reportFormat = data.settings.answerFormat;
     save(); render();
   });
-  root.querySelectorAll<HTMLElement>("[data-report-format]").forEach(b => b.onclick = () => {reportFormat = b.dataset.reportFormat as typeof reportFormat; render();});
+  root.querySelectorAll<HTMLElement>("[data-sequence-format]").forEach(b => b.onclick = () => {data.settings.sequenceAnswerFormat = b.dataset.sequenceFormat as AnswerFormat; sequenceReportFormat = data.settings.sequenceAnswerFormat; save(); render();});
+  root.querySelectorAll<HTMLElement>("[data-report-format]").forEach(b => b.onclick = () => {if (filter.startsWith("sequence")) sequenceReportFormat = b.dataset.reportFormat as typeof sequenceReportFormat; else reportFormat = b.dataset.reportFormat as typeof reportFormat; render();});
   root.querySelectorAll<HTMLElement>("[data-digit]").forEach(b => b.onclick = () => changeRecallInput({type:"digit",value:b.dataset.digit!}));
   root.querySelectorAll<HTMLElement>("[data-rank]").forEach(b => b.onclick = () => changeRecallInput({type:"rank",value:b.dataset.rank!}));
   root.querySelectorAll<HTMLElement>("[data-suit]").forEach(b => b.onclick = () => changeRecallInput({type:"suit",value:b.dataset.suit!}));
@@ -811,6 +838,8 @@ function bind(root: ParentNode = app) {
           case "settings":
             route("settings");
             break;
+          case "sequence-setup":
+            deckMode = "quiz"; route("deck"); break;
           case "start-sequence":
             startSequence();
             break;
@@ -887,6 +916,7 @@ function bind(root: ParentNode = app) {
                 data = emptyData();
                 period = "7";
                 reportFormat = "multiple-choice";
+                sequenceReportFormat = "multiple-choice";
                 recoveryRaw = null;
                 storageConflict = false;
                 storageProblem = "";
@@ -956,6 +986,7 @@ function bind(root: ParentNode = app) {
           storageProblem = "";
           period = data.settings.statsPeriod ?? "7";
       reportFormat = formatOf(data.settings);
+      sequenceReportFormat = data.settings.sequenceAnswerFormat ?? "multiple-choice";
           render();
         }
       } catch (err) {

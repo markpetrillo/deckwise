@@ -125,3 +125,19 @@ dialog{border-color:#304968;border-radius:18px;padding:28px 24px;color:#e8eef8;b
 .recall-submit{display:flex;justify-content:center;width:100%;min-height:46px;margin-top:12px}.recall-submit:disabled{opacity:.4}.recall-help{font-size:10px;text-align:center;line-height:1.5;color:var(--muted);margin:8px 0 0}
 @media(max-width:365px){.rank-grid .recall-tile{flex-basis:calc((100% - 20px)/6)}}
 @media(max-height:740px){.direct-stage{min-height:128px;padding-top:8px}.direct-stage .prompt-card{width:84px;height:118px}.direct-session{min-height:60px;padding-top:10px}.direct-session+.session-progress+.direct-stage+.feedback{height:30px;min-height:30px;margin:3px 0}.recall-entry{min-height:44px;padding:7px 10px}.recall-submit{margin-top:8px}.recall-help{margin:4px 0 0}}
+
+/* Consistent setup controls and steady direct-recall input across quiz types. */
+.control-label{display:block;font-size:11px;line-height:1.5;color:var(--muted);margin-bottom:8px}
+.practice-toggle.two-options{grid-template-columns:repeat(2,minmax(0,1fr))}
+.sequence-setup .session-length{margin-top:18px}.sequence-setup .start{justify-content:center}
+.answer-format-label{display:block;font-size:11px;color:var(--muted);line-height:1.5;margin-top:4px}
+.sequence-start-prompt{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;min-height:252px;text-align:center;margin:0 auto;padding:12px}
+.sequence-start-prompt span{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
+.sequence-start-prompt strong{font-size:26px;letter-spacing:-.5px;font-weight:550;color:#e8eef8}
+.sequence-start-prompt p{font-size:12px;line-height:1.6;color:#a7bcd7;margin:0}
+.direct-stage .sequence-start-prompt{min-height:190px}
+.recall-tile{user-select:none;transition:background-color .12s ease,border-color .12s ease}
+.segmented button,.nav button{transition:background-color .12s ease,color .12s ease}
+dialog{max-width:min(560px,calc(100vw - 32px));max-height:calc(100dvh - 40px);overflow-y:auto;overscroll-behavior:contain}
+@media(max-height:740px){.sequence-start-prompt{min-height:182px}.direct-stage .sequence-start-prompt{min-height:118px;gap:7px}.sequence-start-prompt strong{font-size:22px}}
+@media(prefers-reduced-motion:reduce){.recall-tile,.segmented button,.nav button{transition:none}}
