@@ -102,9 +102,11 @@ function appHarness(seed?: Data) {
     click("data-view","deck");click("data-sequence-format",format);click("data-sequence-direction",direction);
     if(random)choose("sequence-start","random");click("data-action","start-sequence");
   };
-  const cardAnswer=()=>{const [rank,suit]=STACK[state().q.position-1];click("data-rank",rank);click("data-suit",suit);click("data-action","recall-submit");};
+  const cardAnswer=()=>{const [rank,suit]=STACK[state().q.position-1];click("data-rank",rank);click("data-suit",suit);};
   const key=(value:string)=>{
-    for(const fn of listeners.get("keydown")??[])fn({key:value,target:{tagName:"BODY"},preventDefault(){},ctrlKey:false,metaKey:false,altKey:false});
+    let prevented=false;
+    for(const fn of listeners.get("keydown")??[])fn({key:value,target:{tagName:"BODY"},preventDefault(){prevented=true;},ctrlKey:false,metaKey:false,altKey:false});
+    return prevented;
   };
   return {app,begin,beginSequence,cardAnswer,click,key,state,choose,writes:()=>({full:fullWrites,panel:panelWrites}),advance:(ms:number)=>{elapsed+=ms;},document,
     visibility:(hidden:boolean)=>{document.hidden=hidden;for(const fn of listeners.get("visibilitychange")??[])fn();},
@@ -131,18 +133,19 @@ test("rank/suit UI offers all cards and preserves the first miss after correctio
  assert.equal((ui.app.innerHTML.match(/data-suit="/g)??[]).length,4);
  assert.equal(ui.app.innerHTML.includes('data-answer="'),false);
  const wrongRank=rank==="J"?"Q":"J";
- ui.click("data-suit",suit);ui.click("data-rank",wrongRank);ui.advance(700);
- ui.click("data-action","recall-submit");
+ assert.equal(ui.app.innerHTML.includes('data-action="recall-submit"'),false);
+ assert.equal(ui.click("data-suit",suit),false);
+ ui.click("data-rank",wrongRank);ui.advance(700);ui.click("data-suit",suit);
  assert.equal(ui.saved().attempts[0].firstCorrect,false);
  assert.equal(ui.state().q.input.rank,"");assert.equal(ui.state().q.input.suit,"");
  const rejected=cardName(STACK.indexOf(wrongRank+suit)+1);
  assert.ok(ui.app.innerHTML.includes(`Incorrect: ${rejected}. Try again.`));
  assert.equal((ui.app.innerHTML.match(/aria-pressed="true"/g)??[]).length,0);
- assert.equal(ui.click("data-action","recall-submit"),false);
+ assert.equal(ui.click("data-suit",suit),false);
  ui.click("data-rank",rank);
  assert.ok(ui.app.innerHTML.includes(`Incorrect: ${rejected}. Try again.`));
- assert.equal(ui.click("data-action","recall-submit"),false);
- ui.click("data-suit",suit);ui.advance(500);ui.click("data-action","recall-submit");
+ assert.equal(ui.saved().attempts.length,1);assert.equal(ui.saved().attempts[0].finalResult,"unresolved");
+ ui.advance(500);ui.click("data-suit",suit);
  const a=ui.saved().attempts[0];
  assert.equal(ui.saved().attempts.length,1);assert.equal(a.elapsedMs,700);assert.equal(a.wrong,1);
  assert.equal(a.finalResult,"corrected");assert.equal(a.finalElapsedMs,1200);
@@ -195,10 +198,10 @@ test("sequence setup remembers its own input format without changing position pr
  assert.ok(ui.app.innerHTML.includes("First card"));
  assert.equal((ui.app.innerHTML.match(/data-rank="/g)??[]).length,13);
 });
-test("rank/suit edits update only the answer panel and preserve prompt and session controls",()=>{
+test("rank edits update only the answer panel and preserve prompt and session controls",()=>{
  const ui=appHarness();ui.beginSequence();
  const before=ui.writes(),frame=ui.app.innerHTML.split('<section class="recall-controls"')[0];
- ui.click("data-rank","J");ui.click("data-suit","D");
+ ui.click("data-rank","Q");ui.click("data-rank","J");
  assert.equal(ui.writes().full,before.full);assert.equal(ui.writes().panel,before.panel+2);
  assert.equal(ui.app.innerHTML.split('<section class="recall-controls"')[0],frame);
  ui.click("data-action","pause");assert.equal(ui.state().paused,true);
@@ -228,7 +231,7 @@ test("direct backward random-start sequence wraps and checks each card once",()=
 });
 test("sequence miss correction, reveal, pause and early finish preserve penalties and raw time",()=>{
  const ui=appHarness();ui.beginSequence();
- ui.click("data-rank","J");ui.click("data-suit","D");ui.advance(500);ui.click("data-action","recall-submit");
+ ui.click("data-rank","J");ui.advance(500);ui.click("data-suit","D");
  ui.advance(300);ui.cardAnswer();assert.equal(ui.saved().attempts[0].firstCorrect,false);assert.equal(ui.saved().attempts[0].elapsedMs,500);
  ui.click("data-action","pause");ui.advance(4000);ui.click("data-action","pause");ui.advance(200);ui.click("data-action","reveal");
  ui.click("data-action","finish");
@@ -280,12 +283,12 @@ for(const direction of ["sequence-forward","sequence-backward"]) {
  test(direction+" clears each wrong card answer while keeping feedback and penalties",()=>{
   const ui=appHarness();ui.beginSequence(direction);
   for(const [rank,suit,name] of [["J","D","Jack of Diamonds"],["K","S","King of Spades"]]) {
-   ui.click("data-rank",rank);ui.click("data-suit",suit);
-   ui.advance(250);ui.click("data-action","recall-submit");
+   ui.click("data-rank",rank);ui.advance(250);ui.click("data-suit",suit);
    assert.equal(ui.state().q.input.rank,"");assert.equal(ui.state().q.input.suit,"");
    assert.ok(ui.app.innerHTML.includes("Incorrect: "+name+". Try again."));
    assert.ok(ui.app.innerHTML.includes("<strong>Rank + suit</strong>"));
-   assert.equal(ui.click("data-action","recall-submit"),false);
+   assert.equal(ui.click("data-suit",suit),false);
+   assert.equal(ui.app.innerHTML.includes('data-action="recall-submit"'),false);
   }
   assert.equal(ui.saved().attempts[0].wrong,2);
   assert.equal(ui.saved().attempts[0].elapsedMs,250);
@@ -299,3 +302,54 @@ for(const direction of ["sequence-forward","sequence-backward"]) {
   assert.deepEqual(validate(ui.saved()),ui.saved());
  });
 }
+
+test("card keyboard input submits immediately on suit and ignores suit-only keys",()=>{
+ const ui=appHarness();ui.beginSequence();
+ assert.equal(ui.app.innerHTML.includes('data-action="recall-submit"'),false);
+ ui.key("C");assert.equal(ui.state().q.input.suit,"");assert.equal(ui.saved().attempts.length,0);
+ ui.key("J");ui.key("4");assert.equal(ui.state().q.input.rank,"4");assert.equal(ui.saved().attempts.length,0);
+ ui.advance(1250);ui.key("c");
+ assert.equal(ui.saved().attempts.length,1);assert.equal(ui.saved().attempts[0].firstCorrect,true);
+ assert.equal(ui.saved().attempts[0].elapsedMs,1250);assert.equal(ui.saved().attempts[0].finalResult,"correct");
+ assert.equal(ui.state().q.position,2);
+ ui.key("c");assert.equal(ui.saved().attempts.length,1);assert.equal(ui.state().q.input.suit,"");
+});
+
+test("previous wrong card combinations cannot submit again through touch or keyboard",()=>{
+ const ui=appHarness();ui.beginSequence();
+ ui.click("data-rank","J");ui.advance(100);ui.click("data-suit","D");
+ ui.click("data-rank","J");
+ assert.equal(ui.click("data-suit","D"),false);ui.key("D");
+ assert.equal(ui.saved().attempts.length,1);assert.equal(ui.saved().attempts[0].wrong,1);
+ assert.equal(ui.state().q.input.rank,"J");assert.equal(ui.state().q.input.suit,"");
+ assert.ok(ui.app.innerHTML.includes("Incorrect: Jack of Diamonds. Try again."));
+ ui.advance(200);ui.cardAnswer();
+ assert.equal(ui.saved().attempts[0].wrong,1);assert.equal(ui.saved().attempts[0].elapsedMs,100);
+ assert.equal(ui.saved().attempts[0].finalElapsedMs,300);assert.equal(ui.saved().attempts[0].finalResult,"corrected");
+});
+
+test("suit submission respects pause, hint and reveal lifecycle",()=>{
+ const ui=appHarness();ui.begin("number-card");
+ const [rank,suit]=STACK[ui.state().q.position-1];
+ ui.click("data-rank",rank);ui.click("data-action","pause");
+ assert.equal(ui.click("data-suit",suit),false);ui.key(suit);assert.equal(ui.saved().attempts.length,0);
+ ui.advance(1000);ui.click("data-action","pause");ui.click("data-action","hint");
+ ui.advance(600);ui.key(suit);
+ const a=ui.saved().attempts[0];assert.equal(a.firstCorrect,true);assert.equal(a.elapsedMs,600);
+ assert.equal(a.hint,true);assert.equal(a.interrupted,true);
+ ui.click("data-rank","K");ui.click("data-action","reveal");
+ const count=ui.saved().attempts.length;
+ assert.equal(ui.click("data-suit","S"),false);ui.key("S");assert.equal(ui.saved().attempts.length,count);
+ assert.equal(ui.saved().attempts.at(-1).finalResult,"revealed");
+});
+
+test("Enter preserves native activation for card buttons and still confirms number answers",()=>{
+ const cards=appHarness();cards.beginSequence();
+ cards.click("data-rank","4");assert.equal(cards.key("Enter"),false);
+ assert.equal(cards.saved().attempts.length,0);
+ // A focused suit's native Enter activation reaches the same click handler.
+ cards.click("data-suit","C");assert.equal(cards.saved().attempts[0].firstCorrect,true);
+ const numbers=appHarness();numbers.begin();
+ for(const digit of String(numbers.state().q.position))numbers.key(digit);
+ assert.equal(numbers.key("Enter"),true);assert.equal(numbers.saved().attempts[0].firstCorrect,true);
+});

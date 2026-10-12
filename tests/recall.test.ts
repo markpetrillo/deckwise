@@ -32,7 +32,7 @@ test("partial and invalid answers are never graded as valid positions",()=>{
   assert.equal(recallPosition("number-card",input),null);
  assert.equal(recallPosition("sequence-forward",{...empty,rank:"J",suit:"D"}),32);
 });
-test("rank and suit can be selected in either order and changed before checking",()=>{
+test("rank and suit input edits build valid combinations without grading",()=>{
  const base=emptyRecallInput();
  const rankFirst=editRecallInput(editRecallInput(base,{type:"rank",value:"J"}),{type:"suit",value:"D"});
  const suitFirst=editRecallInput(editRecallInput(base,{type:"suit",value:"D"}),{type:"rank",value:"J"});

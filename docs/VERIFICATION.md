@@ -110,3 +110,11 @@ All 21 core tests pass, including mode-specific evidence, rolling 7/30-day windo
 - Rank tiles use an explicit two-row grid: seven ranks above six centered ranks. The six-column fallback that stranded the King is removed; the phone screenshots supplied by Mark were reviewed as the visual baseline.
 - Real-app interaction tests verify that wrong digit and rank/suit submissions clear the input while keeping the rejected answer in the feedback, including during partial retry entry. Forward/backward sequence retries preserve the original first-response time, correction outcome, and five-second penalties.
 - Browser rendering verification could not run because the approved UI automation runtime failed to initialize. No rendered layout check is claimed.
+
+
+## Submit card answers on suit selection — October 12, 2026
+
+- Card-answer Direct recall has no Check answer button: rank first, then suit immediately submits in number → card and both sequence directions. Numeric answers keep their existing confirmation.
+- 73 tests pass, including complete 52-card runs, touch/letter-key suit submission, unselected-rank guards, duplicate-miss protection, immediate retry clearing, timing, pause, hints, reveals, and native Enter activation handling.
+- TypeScript checking, production build, service-worker generation, and diff checks pass. All old history retains its original response times, including the former card confirmation step.
+- Browser rendering verification remains unavailable because the approved UI automation runtime cannot initialize; in-memory interaction tests execute the real application handlers.

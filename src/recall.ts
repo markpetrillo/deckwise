@@ -3,7 +3,7 @@ import {STACK, RANKS, SUITS, cardName, type Direction} from "./core";
 export interface RecallInput {digits: string; rank: string; suit: string}
 export type RecallAction = {type:"digit" | "rank" | "suit"; value:string} | {type:"backspace" | "clear"};
 export const emptyRecallInput = (): RecallInput => ({digits:"",rank:"",suit:""});
-/** Editing a partial answer never grades it. Only Check answer submits. */
+/** Editing input never grades it; the UI submits a suit selection or confirmed number. */
 export function editRecallInput(input: RecallInput, action: RecallAction): RecallInput {
   if (action.type === "clear") return emptyRecallInput();
   if (action.type === "backspace") return {...input,digits:input.digits.slice(0,-1)};

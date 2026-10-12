@@ -192,7 +192,7 @@ function practice() {
 }
 function questionPrompt() {
   if (!q) return "";
-  if (isSequence(q.direction) && sequenceSource === 0) return `<div class="sequence-start-prompt"><span>Start of run</span><strong>${sequenceStart === "random" ? `Position ${q.position}` : q.direction === "sequence-forward" ? "First card" : "Last card"}</strong><p>${q.answerFormat === "direct-recall" ? "Choose its rank and suit below." : "Choose the card below."}</p></div>`;
+  if (isSequence(q.direction) && sequenceSource === 0) return `<div class="sequence-start-prompt"><span>Start of run</span><strong>${sequenceStart === "random" ? `Position ${q.position}` : q.direction === "sequence-forward" ? "First card" : "Last card"}</strong><p>${q.answerFormat === "direct-recall" ? "Choose a rank, then a suit below." : "Choose the card below."}</p></div>`;
   return `<div class="prompt-card">${isSequence(q.direction) ? cardImage(sequenceSource) : q.direction === "card-number" ? cardImage(q.position) : numberCard(q.position)}</div>`;
 }
 
@@ -215,19 +215,25 @@ function directAnswerContent() {
   const suits: Record<string,string> = {C:"♣",D:"♦",H:"♥",S:"♠"};
   const controls = q.direction === "card-number"
     ? `<div class="digit-grid" role="group" aria-label="Position digits">${"1234567890".split("").map(d => `<button class="recall-tile digit-tile" data-digit="${d}" aria-label="Digit ${d}" ${disabled}>${d}</button>`).join("")}</div><div class="recall-edit"><button data-action="recall-backspace" aria-label="Delete last digit" ${disabled || (!q.input.digits ? "disabled" : "")}>⌫</button><button data-action="recall-clear" ${disabled}>Clear</button></div>`
-    : `<div class="rank-grid" role="group" aria-label="Card rank">${RANKS.split("").map(rank => `<button class="recall-tile ${q!.input.rank === rank ? "selected" : ""}" data-rank="${rank}" aria-label="${rankNames[rank] ?? "Rank "+rank}" aria-pressed="${q!.input.rank === rank}" ${disabled}>${rank === "T" ? "10" : rank}</button>`).join("")}</div><div class="suit-grid" role="group" aria-label="Card suit">${Object.keys(SUITS).map(suit => `<button class="recall-tile suit-tile ${suit === "D" || suit === "H" ? "red-suit" : ""} ${q!.input.suit === suit ? "selected" : ""}" data-suit="${suit}" aria-label="${SUITS[suit]}" aria-pressed="${q!.input.suit === suit}" ${disabled}>${suits[suit]}</button>`).join("")}</div>`;
+    : `<div class="rank-grid" role="group" aria-label="Card rank">${RANKS.split("").map(rank => `<button class="recall-tile ${q!.input.rank === rank ? "selected" : ""}" data-rank="${rank}" aria-label="${rankNames[rank] ?? "Rank "+rank}" aria-pressed="${q!.input.rank === rank}" ${disabled}>${rank === "T" ? "10" : rank}</button>`).join("")}</div><div class="suit-grid" role="group" aria-label="Card suit">${Object.keys(SUITS).map(suit => `<button class="recall-tile suit-tile ${suit === "D" || suit === "H" ? "red-suit" : ""} ${q!.input.suit === suit ? "selected" : ""}" data-suit="${suit}" aria-label="${SUITS[suit]}, submit answer" aria-pressed="${q!.input.suit === suit}" ${disabled || (!q!.input.rank || q!.selected.includes(recallPosition(q!.direction,{...q!.input,suit}) ?? 0) ? "disabled" : "")}>${suits[suit]}</button>`).join("")}</div>`;
   const display = q.done ? q.direction === "card-number" ? String(q.position).padStart(2,"0") : cardName(q.position) : recallDisplay(q.direction,q.input);
-  return `<div class="recall-entry" aria-live="polite"><span>${q.done ? "Answer" : "Your answer"}</span><strong>${display}</strong></div>${controls}<button class="primary recall-submit" data-action="recall-submit" ${ready ? "" : "disabled"}>Check answer</button><p class="recall-help">${q.done ? "Answer revealed." : position !== null && q.selected.includes(position) ? "Already tried. Change your answer." : q.direction === "card-number" ? "Enter 1–52. Leading zeros are accepted." : "Choose a rank and suit in either order."}</p>`;
+  return `<div class="recall-entry" aria-live="polite"><span>${q.done ? "Answer" : "Your answer"}</span><strong>${display}</strong></div>${controls}${q.direction === "card-number" ? `<button class="primary recall-submit" data-action="recall-submit" ${ready ? "" : "disabled"}>Check answer</button>` : ""}<p class="recall-help">${q.done ? "Answer revealed." : position !== null && q.selected.includes(position) ? "Already tried. Change your answer." : q.direction === "card-number" ? "Enter 1–52. Leading zeros are accepted." : "Choose a rank, then a suit to answer."}</p>`;
 }
 function changeRecallInput(action: RecallAction) {
   if (!q || q.answerFormat !== "direct-recall" || paused || q.done || storageConflict) return;
   tick();
   if (paused || !q) return;
-  q.input = editRecallInput(q.input,action);
+  const input = editRecallInput(q.input,action);
+  if (action.type === "suit") {
+    const position = recallPosition(q.direction,input);
+    if (position === null || q.selected.includes(position)) return;
+  }
+  q.input = input;
+  if (action.type === "suit") {submitRecall(); return;}
   const panel = document.querySelector<HTMLElement>(".recall-controls");
   if (panel) {panel.innerHTML = directAnswerContent(); bind(panel);}
   else render();
-  const selector = action.type === "digit" || action.type === "rank" || action.type === "suit" ? `[data-${action.type}="${CSS.escape(action.value)}"]` : `[data-action="recall-${action.type}"]`;
+  const selector = action.type === "digit" || action.type === "rank" ? `[data-${action.type}="${CSS.escape(action.value)}"]` : `[data-action="recall-${action.type}"]`;
   document.querySelector<HTMLButtonElement>(selector)?.focus({preventScroll:true});
 }
 function submitRecall() {
@@ -442,7 +448,7 @@ function deckTabs() {
 function deck() {
   if (deckMode === "quiz") {
     const format = data.settings.sequenceAnswerFormat ?? "multiple-choice";
-    chrome(`${deckTabs()}<section class="start-panel practice-home sequence-setup"><span class="control-label">Direction</span><div class="segmented practice-toggle two-options" role="group" aria-label="Sequence direction">${(["sequence-forward", "sequence-backward"] as SequenceDirection[]).map(dir => `<button data-sequence-direction="${dir}" class="${sequenceDirection === dir ? "selected" : ""}" aria-pressed="${sequenceDirection === dir}">${dir === "sequence-forward" ? "Forward" : "Backward"}</button>`).join("")}</div>${formatToggle(format,"sequence")}<p class="format-note">${format === "direct-recall" ? "Recall each card with rank + suit." : "Choose each card from five options."}</p><label class="session-length" for="sequence-start">Start at<select id="sequence-start"><option value="beginning" ${sequenceStart === "beginning" ? "selected" : ""}>${sequenceDirection === "sequence-forward" ? "First card" : "Last card"}</option><option value="random" ${sequenceStart === "random" ? "selected" : ""}>Random position</option></select></label><button class="primary start" data-action="start-sequence" ${storageProblem ? "disabled" : ""}>Start 52-card run</button><p class="start-note">52 answers · timed run · +5 seconds per miss or reveal</p></section>`);
+    chrome(`${deckTabs()}<section class="start-panel practice-home sequence-setup"><span class="control-label">Direction</span><div class="segmented practice-toggle two-options" role="group" aria-label="Sequence direction">${(["sequence-forward", "sequence-backward"] as SequenceDirection[]).map(dir => `<button data-sequence-direction="${dir}" class="${sequenceDirection === dir ? "selected" : ""}" aria-pressed="${sequenceDirection === dir}">${dir === "sequence-forward" ? "Forward" : "Backward"}</button>`).join("")}</div>${formatToggle(format,"sequence")}<p class="format-note">${format === "direct-recall" ? "Choose a rank, then a suit to answer." : "Choose each card from five options."}</p><label class="session-length" for="sequence-start">Start at<select id="sequence-start"><option value="beginning" ${sequenceStart === "beginning" ? "selected" : ""}>${sequenceDirection === "sequence-forward" ? "First card" : "Last card"}</option><option value="random" ${sequenceStart === "random" ? "selected" : ""}>Random position</option></select></label><button class="primary start" data-action="start-sequence" ${storageProblem ? "disabled" : ""}>Start 52-card run</button><p class="start-note">52 answers · timed run · +5 seconds per miss or reveal</p></section>`);
     return;
   }
   chrome(
@@ -599,7 +605,7 @@ function progress() {
               "",
             )}</div>${sessions.length > historyLimit ? '<button class="text-button" data-action="more-history">Show more sessions</button>' : ""}`
         : '<p class="muted">No sessions in this period.</p>'
-    }</section>${recentlyDeleted()}<div class="export-row"><button class="text-button" data-action="export">↓ Export backup</button><button class="text-button" data-action="csv">↓ Export results CSV</button></div><p class="footnote">Independent accuracy excludes recent exposure; hints and reveals count as failures. Timing also excludes interruptions. ${reportAnswerFormat() === "all" ? "Choose one answer format for comparable timing." : reportAnswerFormat() === "direct-recall" ? "Direct recall timing includes entering and checking the answer." : "Multiple choice measures recognition; fast guesses can still be correct."}</p>`,
+    }</section>${recentlyDeleted()}<div class="export-row"><button class="text-button" data-action="export">↓ Export backup</button><button class="text-button" data-action="csv">↓ Export results CSV</button></div><p class="footnote">Independent accuracy excludes recent exposure; hints and reveals count as failures. Timing also excludes interruptions. ${reportAnswerFormat() === "all" ? "Choose one answer format for comparable timing." : reportAnswerFormat() === "direct-recall" ? "Direct recall timing includes entering your answer." : "Multiple choice measures recognition; fast guesses can still be correct."}</p>`,
   );
 }
 function recentlyDeleted() {
@@ -1012,7 +1018,10 @@ document.addEventListener("keydown", (e) => {
   if (active && !paused && q) {
     if (q.answerFormat === "direct-recall") {
       if (e.ctrlKey || e.metaKey || e.altKey) return;
-      if (e.key === "Enter") {e.preventDefault(); if (q.done) newQuestion(); else submitRecall();}
+      if (e.key === "Enter") {
+        if (q.done) {e.preventDefault(); newQuestion();}
+        else if (q.direction === "card-number") {e.preventDefault(); submitRecall();}
+      }
       else if (q.direction === "card-number") {
         if (/^[0-9]$/.test(e.key)) {e.preventDefault(); changeRecallInput({type:"digit",value:e.key});}
         else if (e.key === "Backspace") {e.preventDefault(); changeRecallInput({type:"backspace"});}
