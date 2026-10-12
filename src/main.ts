@@ -77,6 +77,7 @@ let q: {
   options: number[];
   elapsed: number;
   wrong: number;
+  lastIncorrect: string;
   hint: boolean;
   revealed: boolean;
   interrupted: boolean;
@@ -181,7 +182,7 @@ function practice() {
           ? "Correct with a hint"
           : "Correct"
     : q.wrong
-      ? "Incorrect. Try again."
+      ? q.lastIncorrect ? `Incorrect: ${esc(q.lastIncorrect)}. Try again.` : "Incorrect. Try again."
       : q.direction === "card-number"
         ? ""
         : "";
@@ -254,6 +255,7 @@ function newQuestion() {
     options: formatOf(active!) === "multiple-choice" ? choices(position, direction) : [],
     elapsed: 0,
     wrong: 0,
+    lastIncorrect: "",
     hint: false,
     revealed: false,
     interrupted: false,
@@ -324,8 +326,13 @@ function answer(p: number) {
     q.firstCorrect = p === q.position;
     q.firstMs = q.elapsed;
   }
-  if (p !== q.position) q.wrong++;
-  else q.done = true;
+  if (p !== q.position) {
+    q.wrong++;
+    if (q.answerFormat === "direct-recall") {
+      q.lastIncorrect = recallDisplay(q.direction,q.input);
+      q.input = emptyRecallInput();
+    }
+  } else q.done = true;
   persistAttempt();
   if (q.done) {
     lastExposure.set(q.position, Date.now());

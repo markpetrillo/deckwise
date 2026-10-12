@@ -102,3 +102,11 @@ All 21 core tests pass, including mode-specific evidence, rolling 7/30-day windo
 - Sequence backup validation, format-specific timing, date/direction/format report filters, and recovery round-trips are covered.
 - Typecheck, production bundle, service-worker generation, and diff checks pass.
 - Browser visual inspection remains unavailable because the UI automation runtime cannot initialize; no screenshot or browser rendering check is claimed.
+
+
+## Direct-recall layout and retry cleanup
+
+- 69 tests pass; TypeScript checking, production bundling, service-worker generation, and diff checks pass.
+- Rank tiles use an explicit two-row grid: seven ranks above six centered ranks. The six-column fallback that stranded the King is removed; the phone screenshots supplied by Mark were reviewed as the visual baseline.
+- Real-app interaction tests verify that wrong digit and rank/suit submissions clear the input while keeping the rejected answer in the feedback, including during partial retry entry. Forward/backward sequence retries preserve the original first-response time, correction outcome, and five-second penalties.
+- Browser rendering verification could not run because the approved UI automation runtime failed to initialize. No rendered layout check is claimed.

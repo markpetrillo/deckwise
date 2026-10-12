@@ -4,7 +4,7 @@ import {readFileSync} from "node:fs";
 import {dirname, resolve} from "node:path";
 import vm from "node:vm";
 import ts from "typescript";
-import {STACK,emptyData,validate,type Data} from "../src/core";
+import {STACK,cardName,emptyData,validate,type Data} from "../src/core";
 
 /** Run the real app against a small in-memory DOM, without touching browser data. */
 function appHarness(seed?: Data) {
@@ -134,8 +134,15 @@ test("rank/suit UI offers all cards and preserves the first miss after correctio
  ui.click("data-suit",suit);ui.click("data-rank",wrongRank);ui.advance(700);
  ui.click("data-action","recall-submit");
  assert.equal(ui.saved().attempts[0].firstCorrect,false);
+ assert.equal(ui.state().q.input.rank,"");assert.equal(ui.state().q.input.suit,"");
+ const rejected=cardName(STACK.indexOf(wrongRank+suit)+1);
+ assert.ok(ui.app.innerHTML.includes(`Incorrect: ${rejected}. Try again.`));
+ assert.equal((ui.app.innerHTML.match(/aria-pressed="true"/g)??[]).length,0);
  assert.equal(ui.click("data-action","recall-submit"),false);
- ui.click("data-rank",rank);ui.advance(500);ui.click("data-action","recall-submit");
+ ui.click("data-rank",rank);
+ assert.ok(ui.app.innerHTML.includes(`Incorrect: ${rejected}. Try again.`));
+ assert.equal(ui.click("data-action","recall-submit"),false);
+ ui.click("data-suit",suit);ui.advance(500);ui.click("data-action","recall-submit");
  const a=ui.saved().attempts[0];
  assert.equal(ui.saved().attempts.length,1);assert.equal(a.elapsedMs,700);assert.equal(a.wrong,1);
  assert.equal(a.finalResult,"corrected");assert.equal(a.finalElapsedMs,1200);
@@ -247,3 +254,48 @@ test("legacy sequence history remains visible as multiple choice after reload",(
  assert.ok(ui.app.innerHTML.includes("Forward · Multiple choice"));assert.ok(ui.app.innerHTML.includes("1 completed"));
  ui.click("data-report-format","direct-recall");assert.ok(ui.app.innerHTML.includes("No results in this view"));
 });
+
+test("wrong digit answers clear for keyboard retry and preserve the exact rejected input",()=>{
+ const ui=appHarness();ui.begin();
+ const position=ui.state().q.position,miss=position===7?8:7;
+ const rejected=String(miss).padStart(2,"0");
+ for(const digit of rejected)ui.key(digit);
+ ui.advance(800);ui.key("Enter");
+ assert.equal(ui.state().q.input.digits,"");
+ assert.ok(ui.app.innerHTML.includes("Incorrect: "+rejected+". Try again."));
+ assert.equal(ui.click("data-action","recall-submit"),false);
+ const digits=String(position);
+ ui.key(digits[0]);
+ assert.ok(ui.app.innerHTML.includes("Incorrect: "+rejected+". Try again."));
+ for(const digit of digits.slice(1))ui.key(digit);
+ ui.advance(600);ui.key("Enter");
+ const a=ui.saved().attempts[0];
+ assert.equal(a.firstCorrect,false);assert.equal(a.wrong,1);assert.equal(a.elapsedMs,800);
+ assert.equal(a.finalResult,"corrected");assert.equal(a.finalElapsedMs,1400);
+ assert.equal(ui.saved().attempts.length,1);
+ assert.equal(ui.app.innerHTML.includes("Incorrect:"),false);
+});
+
+for(const direction of ["sequence-forward","sequence-backward"]) {
+ test(direction+" clears each wrong card answer while keeping feedback and penalties",()=>{
+  const ui=appHarness();ui.beginSequence(direction);
+  for(const [rank,suit,name] of [["J","D","Jack of Diamonds"],["K","S","King of Spades"]]) {
+   ui.click("data-rank",rank);ui.click("data-suit",suit);
+   ui.advance(250);ui.click("data-action","recall-submit");
+   assert.equal(ui.state().q.input.rank,"");assert.equal(ui.state().q.input.suit,"");
+   assert.ok(ui.app.innerHTML.includes("Incorrect: "+name+". Try again."));
+   assert.ok(ui.app.innerHTML.includes("<strong>Rank + suit</strong>"));
+   assert.equal(ui.click("data-action","recall-submit"),false);
+  }
+  assert.equal(ui.saved().attempts[0].wrong,2);
+  assert.equal(ui.saved().attempts[0].elapsedMs,250);
+  ui.advance(300);ui.cardAnswer();
+  const a=ui.saved().attempts[0];
+  assert.equal(a.firstCorrect,false);assert.equal(a.finalResult,"corrected");
+  assert.equal(a.finalElapsedMs,800);assert.equal(a.wrong,2);
+  assert.equal(ui.app.innerHTML.includes("Incorrect:"),false);
+  ui.click("data-action","finish");
+  assert.ok(ui.dialogHtml().includes("+10s"));
+  assert.deepEqual(validate(ui.saved()),ui.saved());
+ });
+}
