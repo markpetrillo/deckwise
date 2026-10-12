@@ -1,4 +1,4 @@
-import {isSequence, summary, type Session, type Attempt, type Mode} from "./core";
+import {isSequence, summary, mappingModel, STACK, type MappingModel, type Session, type Attempt, type Mode, type AnswerFormat, formatOf} from "./core";
 /** Attempts arrive already filtered by practice direction and reporting period. */
 export function sessionTrend(sessions: Session[], attempts: Attempt[], limit = 20) {
   const grouped = new Map<string, Attempt[]>();
@@ -20,7 +20,7 @@ export function directionComparison(attempts: Attempt[]) {
   const matchedCard = card.filter(a => common.has(a.position)), matchedNumber = number.filter(a => common.has(a.position));
   const c = summary(matchedCard), n = summary(matchedNumber);
   const enough = common.size >= 10 && matchedCard.length >= 20 && matchedNumber.length >= 20 && new Set(matchedCard.map(a => a.sessionId)).size >= 2 && new Set(matchedNumber.map(a => a.sessionId)).size >= 2;
-  const timedCount = (list: Attempt[]) => list.filter(a => a.firstCorrect && !a.hint && !a.revealed && !a.interrupted && a.elapsedMs !== null).length;
+  const timedCount = (list: Attempt[]) => summary(list).timedCount;
   let focus: "card-number" | "number-card" | null = null;
   let reason: "insufficient" | "accuracy" | "speed" | "tradeoff" | "balanced" = "insufficient";
   const accuracyGap = Math.abs(c.accuracy-n.accuracy);
@@ -38,7 +38,41 @@ export function directionComparison(attempts: Attempt[]) {
   return {card:summary(card), number:summary(number), cardCount:card.length, numberCount:number.length, commonCards:common.size, focus, reason, accuracyGap, speedGapMs};
 }
 
-export function practiceEvidence(attempts: Attempt[], mode: Mode, period: "7" | "30" | "all", now = Date.now()) {
+export type CardSort = "position" | "mastery" | "speed" | "accuracy" | "misses";
+export function cardRanking(attempts: Attempt[], direction: "all" | "card-number" | "number-card", target = 3, sort: CardSort = "position", now = Date.now()) {
+  const dirs = direction === "all" ? ["card-number", "number-card"] as const : [direction];
+  const value = (m: MappingModel) => sort === "speed" ? -(m.recent.medianMs ?? -1) :
+    sort === "accuracy" ? m.weightedAccuracy : sort === "misses" ? -(m.lastMissAt ?? -1) : m.score;
+  const rows = STACK.map((_,i) => {
+    const models = dirs.map(dir => mappingModel(attempts,i+1,dir,target,now));
+    // A combined report ranks the weakest observed direction; no combined skill.
+    const observed = models.filter(m => m.lifetime.eligibleTotal);
+    const weakest = [...(observed.length ? observed : models)].sort((a,b) => value(a)-value(b))[0];
+    return {position:i+1, models, weakest, stats:summary(attempts.filter(a => a.position === i+1 && (direction === "all" || a.direction === direction)))};
+  });
+  return rows.sort((a,b) => sort === "position" ? a.position-b.position :
+    Number(!a.weakest.lifetime.eligibleTotal)-Number(!b.weakest.lifetime.eligibleTotal) ||
+    value(a.weakest)-value(b.weakest) || a.position-b.position);
+}
+
+export function mappingInsights(attempts: Attempt[], target = 3, direction: "card-number" | "number-card" | null = null) {
+  const directions = direction ? [direction] : ["card-number", "number-card"] as const;
+  const models = directions.flatMap(dir => STACK.map((_,i) => mappingModel(attempts,i+1,dir,target)));
+  const slowMappings = models.filter(m => m.recent.eligibleTotal >= 4 && m.recent.timedCount >= 3 && m.weightedAccuracy >= 0.75 && m.recent.medianMs! > target*1000).length;
+  const variableMappings = models.filter(m => m.consistency === "Variable").length;
+  const recent = [...attempts].filter(a => !isSequence(a.direction) && !a.recentExposure && (!direction || a.direction === direction)).sort((a,b) => a.at-b.at).slice(-100);
+  const misses = recent.filter(a => !a.firstCorrect);
+  const counts = new Map<string,number>();
+  misses.forEach(a => {const k = `${a.direction}:${a.position}`; counts.set(k,(counts.get(k) ?? 0)+1);});
+  let concentratedMappings = 0, covered = 0;
+  for (const count of [...counts.values()].sort((a,b) => b-a)) {
+    if (covered >= misses.length * 0.7) break;
+    concentratedMappings++; covered += count;
+  }
+  return {slowMappings, variableMappings, recentMisses:misses.length, concentratedMappings, coveredMisses:covered};
+}
+
+export function practiceEvidence(attempts: Attempt[], mode: Mode, period: "7" | "30" | "all", now = Date.now(), format?: AnswerFormat) {
   const cutoff = period === "all" ? 0 : now - Number(period) * 86400000;
-  return attempts.filter(a => !isSequence(a.direction) && (mode === "mixed" || a.direction === mode) && a.at >= cutoff);
+  return attempts.filter(a => !isSequence(a.direction) && (mode === "mixed" || a.direction === mode) && a.at >= cutoff && (!format || formatOf(a) === format));
 }

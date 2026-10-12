@@ -84,3 +84,12 @@ All 19 core tests pass. Comparison tests cover sample/session/shared-card minimu
 ## Shared practice windows and cohesive selectors
 
 All 21 core tests pass, including mode-specific evidence, rolling 7/30-day windows, all-time evidence, saved period validation, and compatibility with old settings. Browser smoke tests and focused checks verified all three Practice stats update by direction and period, the default 7-day window, persistence after reload, shared windows across sequence/position Progress, equal toggle widths, and compact 320px layouts. Practice and Progress share the same direction order, segmented controls, reporting-period controls, and restrained navy panels. Due counts reflect the current review schedule in the selected direction, independently of the historical reporting window.
+
+
+## Direct recall — October 11, 2026
+
+- All 53 tests pass; TypeScript checking, Vite production build, and service-worker generation pass.
+- Input tests cover all 52 mappings in both directions, leading zeros, incomplete/invalid entries, rank/suit order, editing, and backup compatibility.
+- Format-aware tests verify independent mastery, intervals, report filtering, assistance/timing exclusions, and delete/restore rebuilding.
+- Interaction tests run the actual app code against an in-memory DOM: touch input, Check answer gating, first-miss correction, raw timing, keyboard entry, pause/hint/reveal, five-choice preservation, and Progress/Practice format selection.
+- Local preview runs at http://127.0.0.1:5188. Browser automation could not start because its runtime failed; no screenshot or browser layout QA is claimed. Styles target two rank rows on ordinary phones and a third row on very narrow screens.

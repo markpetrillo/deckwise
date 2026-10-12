@@ -140,24 +140,21 @@ test("interrupted timing is excluded, recent exposure cannot grow an existing in
 });
 test("scheduler avoids the last four prompts and gives weak cards more probability", () => {
   const d = emptyData();
-  for (let p = 1; p <= 52; p++)
-    d.memory[key(p, "card-number")] = {
-      due: 200000000,
-      intervalDays: 1,
-      successes: 2,
-      failures: 0,
-      slow: 0,
-    };
-  record(d, attempt({ firstCorrect: false, wrong: 1 }));
+  // Derived mastery needs actual observations, not synthetic memory counters.
+  for (let i = 0; i < 8; i++)
+    for (let p = 1; p <= 52; p++)
+      record(d, attempt({id:`trained-${i}-${p}`, position:p, at:90000000+(i*52+p)*1000, elapsedMs:1000}));
+  for (let i = 0; i < 4; i++)
+    record(d, attempt({id:`miss-${i}`, firstCorrect:false, wrong:1, at:100000000-(3-i)*60001}));
   let weak = 0,
     stable = 0;
-  for (let i = 0; i < 10000; i++) {
+  for (let i = 0; i < 2000; i++) {
     const p = choose(
       d,
       "card-number",
       [1, 2, 3, 4],
-      100000001,
-      () => i / 10000,
+      100060001,
+      () => i / 2000,
     );
     assert.ok(![1, 2, 3, 4].includes(p));
     if (p === 22) weak++;
