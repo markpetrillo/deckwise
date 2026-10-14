@@ -195,7 +195,7 @@ test("sequence setup remembers its own input format without changing position pr
  ui.click("data-action","start-sequence");
  assert.equal(ui.state().q.answerFormat,"direct-recall");
  assert.equal(ui.state().q.position,1);
- assert.ok(ui.app.innerHTML.includes("First card"));
+ assert.ok(ui.app.innerHTML.includes('aria-label="Position 1"'));
  assert.equal((ui.app.innerHTML.match(/data-rank="/g)??[]).length,13);
 });
 test("rank edits update only the answer panel and preserve prompt and session controls",()=>{
@@ -224,7 +224,7 @@ test("direct forward sequence covers all 52 cards and finishes a full run",()=>{
 });
 test("direct backward random-start sequence wraps and checks each card once",()=>{
  const ui=appHarness();ui.beginSequence("sequence-backward","direct-recall",true);
- const start=ui.state().q.position;assert.equal(start,11);assert.ok(ui.app.innerHTML.includes("Position 11"));
+ const start=ui.state().q.position;assert.equal(start,11);assert.ok(ui.app.innerHTML.includes('aria-label="Position 11"'));
  for(let i=0;i<52;i++){assert.equal(ui.state().q.position,((start-1-i+52)%52)+1);ui.advance(100);ui.cardAnswer();}
  const d=ui.saved();assert.equal(d.sessions[0].completed,true);assert.equal(d.sessions[0].startPosition,11);
  assert.equal(new Set(d.attempts.map((a:any)=>a.position)).size,52);assert.deepEqual(validate(d),d);
@@ -352,4 +352,32 @@ test("Enter preserves native activation for card buttons and still confirms numb
  const numbers=appHarness();numbers.begin();
  for(const digit of String(numbers.state().q.position))numbers.key(digit);
  assert.equal(numbers.key("Enter"),true);assert.equal(numbers.saved().attempts[0].firstCorrect,true);
+});
+
+test("sequence context follows answered cards without revealing the target on misses or reveal",()=>{
+ for(const direction of ["sequence-forward","sequence-backward"]) {
+  const ui=appHarness();ui.beginSequence(direction);
+  const positions=()=>Array.from(String(ui.app.innerHTML).matchAll(/data-context-position="(\d+)"/g),m=>Number(m[1]));
+  const start=ui.state().q.position;
+  assert.deepEqual(positions(),[]);
+  assert.ok(ui.app.innerHTML.includes('aria-label="Position '+start+'"'));
+  ui.cardAnswer();assert.deepEqual(positions(),[start]);
+  const second=ui.state().q.position;ui.cardAnswer();
+  assert.deepEqual(positions(),[start,second]);
+  const target=ui.state().q.position;
+  ui.click("data-rank","J");ui.click("data-suit","D");
+  assert.equal(ui.state().q.position,target);assert.deepEqual(positions(),[start,second]);
+  ui.click("data-action","reveal");assert.deepEqual(positions(),[start,second]);
+  assert.equal(ui.app.innerHTML.includes('data-context-position="'+target+'"'),false);
+  ui.click("data-action","next");assert.deepEqual(positions(),[second,target]);
+  ui.click("data-action","pause");assert.deepEqual(positions(),[second,target]);
+ }
+});
+test("random backward context wraps in run order and starts without clues",()=>{
+ const ui=appHarness();ui.beginSequence("sequence-backward","multiple-choice",true);
+ const positions=()=>Array.from(String(ui.app.innerHTML).matchAll(/data-context-position="(\d+)"/g),m=>Number(m[1]));
+ assert.deepEqual(positions(),[]);
+ while(ui.state().q.position!==1)ui.click("data-answer",String(ui.state().q.position));
+ ui.click("data-answer","1");assert.equal(ui.state().q.position,52);assert.deepEqual(positions(),[2,1]);
+ ui.click("data-answer","52");assert.equal(ui.state().q.position,51);assert.deepEqual(positions(),[1,52]);
 });

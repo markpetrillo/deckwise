@@ -130,13 +130,24 @@ dialog{border-color:#304968;border-radius:18px;padding:28px 24px;color:#e8eef8;b
 .practice-toggle.two-options{grid-template-columns:repeat(2,minmax(0,1fr))}
 .sequence-setup .session-length{margin-top:18px}.sequence-setup .start{justify-content:center}
 .answer-format-label{display:block;font-size:11px;color:var(--muted);line-height:1.5;margin-top:4px}
-.sequence-start-prompt{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;min-height:252px;text-align:center;margin:0 auto;padding:12px}
-.sequence-start-prompt span{font-size:10px;letter-spacing:1px;text-transform:uppercase;color:var(--muted)}
-.sequence-start-prompt strong{font-size:26px;letter-spacing:-.5px;font-weight:550;color:#e8eef8}
-.sequence-start-prompt p{font-size:12px;line-height:1.6;color:#a7bcd7;margin:0}
-.direct-stage .sequence-start-prompt{min-height:190px}
 .recall-tile{user-select:none;transition:background-color .12s ease,border-color .12s ease}
 .segmented button,.nav button{transition:background-color .12s ease,color .12s ease}
 dialog{max-width:min(560px,calc(100vw - 32px));max-height:calc(100dvh - 40px);overflow-y:auto;overscroll-behavior:contain}
-@media(max-height:740px){.sequence-start-prompt{min-height:182px}.direct-stage .sequence-start-prompt{min-height:118px;gap:7px}.sequence-start-prompt strong{font-size:22px}}
+
 @media(prefers-reduced-motion:reduce){.recall-tile,.segmented button,.nav button{transition:none}}
+
+/* Position numerals scale to the actual card in every drill and answer row. */
+.number-card{container-type:inline-size;background:#fff;color:#17243a;border-color:#d9e0e8}
+.number-card strong{font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;font-size:clamp(28px,42cqi,76px);font-weight:500;font-variant-numeric:lining-nums tabular-nums;letter-spacing:-.035em;line-height:1}
+.answer .number-card strong{font-size:clamp(22px,42cqi,36px);font-weight:500;letter-spacing:-.035em}
+/* A fixed three-card row keeps context and the numbered target in place. */
+.sequence-prompt{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;width:100%;max-width:460px;align-items:center}
+.sequence-card{width:100%;height:auto;aspect-ratio:5/7;border-radius:9px;min-width:0}
+.sequence-context{filter:drop-shadow(0 5px 10px #02081655)}.sequence-context .playing-card{height:auto;width:100%;aspect-ratio:5/7}
+.sequence-placeholder{border:1px dashed #2b405c;background:#101e322b}
+.sequence-prompt .sequence-target{width:100%;height:100%;filter:drop-shadow(0 7px 14px #02081666)}
+.sequence-target .number-card{border-color:#9eb5d2;box-shadow:0 0 0 2px #3f77bd33}
+.direct-stage .sequence-prompt{max-width:380px}
+.direct-stage .sequence-target{width:100%;height:100%}
+@media(max-width:380px){.sequence-prompt{gap:9px}.sequence-card{border-radius:7px}}
+@media(max-height:740px){.sequence-stage{min-height:182px;padding-top:12px}.direct-stage.sequence-stage{min-height:152px;padding-top:8px}.direct-stage .sequence-prompt{max-width:300px}}

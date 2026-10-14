@@ -71,3 +71,5 @@ Position practice now derives independent per-direction recall scores from recen
 
 
 Position practice now offers **Multiple choice** or **Direct recall**. Direct recall uses all 13 rank tiles plus four suits for number → card, and a 0–9 keypad for card → number (07 and 7 both work). Selecting a suit immediately submits a card answer after choosing its rank. Numeric answers retain Check answer; incomplete entries and rank edits are not graded. First misses, retries, hints, reveals, and interruptions retain the established rules. Statistics and adaptive practice are separated by answer format, with legacy history classified as multiple choice and preserved. Sequence quizzes also offer Direct recall with the same rank/suit controls, preserving the 52-card run, pause/reveal, and five-second penalty rules.
+
+Sequence drills show the two most recently answered cards to the left of a numbered target card. Context fills as the run advances and follows run order in either direction, including random-start wraps. Both Multiple choice and Direct recall use this layout. Position-number cards use centered, responsive tabular numerals in all quiz formats.

@@ -178,12 +178,15 @@
   document.querySelector('#sequence-start').value = 'beginning';
   document.querySelector('#sequence-start').dispatchEvent(new Event('change'));
   click('[data-action="start-sequence"]');
-  assert(!document.querySelector('.prompt-card img'), 'Sequence starts blank');
+  assert(document.querySelector('.sequence-target .number-card').getAttribute('aria-label') === 'Position 1', 'Sequence starts at numbered position one');
+  assert(!document.querySelector('.sequence-context'), 'Starting prompt does not expose preceding cards');
   for (let position = 1; position <= 52; position++) {
     assert(document.querySelector(`[data-answer="${position}"]`), 'Starting/card position offered');
     click(`[data-answer="${position}"]`);
     if (position < 52) {
-      assert(document.querySelector('.prompt-card img').alt === `${ranks[expected[position-1][0]]} of ${suits[expected[position-1][1]]}`, 'Immediate sequential prompt');
+      assert(document.querySelector('.sequence-target .number-card').getAttribute('aria-label') === `Position ${position+1}`, 'Immediate numbered target');
+      const context = [...document.querySelectorAll('[data-context-position]')].map(el => Number(el.dataset.contextPosition));
+      assert(JSON.stringify(context) === JSON.stringify(position === 1 ? [1] : [position-1,position]), 'Previous two cards in order');
     }
   }
   const fullRun = raw().sessions.at(-1);
@@ -193,7 +196,7 @@
   click('[data-action="summary-progress"]');
   assert(document.querySelector('#stats-direction').value === 'sequence', 'Sequence results default');
   assert(document.querySelector('#stats-direction').options[0].value === 'sequence', 'Sequence filter first');
-  results.push('blank first prompt, first through final card, automatic completion, sequence progress default');
+  results.push('numbered target, previous two cards, first through final card, automatic completion, sequence progress default');
   return JSON.stringify({
     passed: results,
     attempts: raw().attempts.length,

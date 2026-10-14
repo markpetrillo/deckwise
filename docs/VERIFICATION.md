@@ -118,3 +118,10 @@ All 21 core tests pass, including mode-specific evidence, rolling 7/30-day windo
 - 73 tests pass, including complete 52-card runs, touch/letter-key suit submission, unselected-rank guards, duplicate-miss protection, immediate retry clearing, timing, pause, hints, reveals, and native Enter activation handling.
 - TypeScript checking, production build, service-worker generation, and diff checks pass. All old history retains its original response times, including the former card confirmation step.
 - Browser rendering verification remains unavailable because the approved UI automation runtime cannot initialize; in-memory interaction tests execute the real application handlers.
+
+## Numbered sequence targets and two-card context — October 14, 2026
+
+- 75 tests pass, including real-app handlers for both answer formats, full forward/backward runs, random-start wrapping, and context stability during misses, reveal, and pause. The current target never appears in context until advancing to the next question.
+- TypeScript checking, Vite production build, service-worker generation, and diff checks pass.
+- Rendered browser checks passed at 390×844 and 320×667: forward target 10 shows positions 8/9; backward target 50 shows positions 52/51; direct-recall number 36 fits its small prompt. No horizontal overflow; compact suit controls stay above navigation. Inspected both sequence layouts and number typography.
+- Completed a full 52-answer Multiple choice run in the browser: 52/52, 100% first-answer accuracy, no penalties, and automatic completion. UI context follows only answers from the current run, with empty reserved slots at the start. Existing grading, timing, history, and scheduler are preserved.
