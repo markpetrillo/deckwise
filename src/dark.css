@@ -98,11 +98,11 @@ dialog{border-color:#304968;border-radius:18px;padding:28px 24px;color:#e8eef8;b
 @media(max-width:380px){.practice-home{padding:14px}.practice-toggle button{font-size:10px;min-height:48px;padding:10px 3px}.practice-stats-toolbar>span{font-size:11px}.stats-period-toggle button{font-size:10px;padding:6px 7px}.practice-stats .mini-stats{gap:6px}.practice-stats .mini-stats strong{font-size:24px}.practice-stats .mini-stats>div{padding:14px 8px}}
 
 /* Progress shares Practice's direction and reporting-window controls. */
-.progress-controls{padding:20px;background:linear-gradient(145deg,#13223a,#101d32);border:1px solid #2b4160;border-radius:20px;margin-bottom:18px}
-.progress-quiz-label{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:13px;color:#b4c5dd;margin-bottom:18px}.progress-quiz-label select{width:170px;margin:0;background:#182b45;border-color:#344b69;border-radius:12px;font-size:12px}
-.progress-controls .position-directions{margin:0 0 18px}.stat-cards{gap:9px}.stat-cards>div{border:1px solid #263b59;border-radius:14px;background:#101d31;padding:18px}.stat-cards strong{font-variant-numeric:tabular-nums;letter-spacing:-.6px}.stat-cards span{color:#9eb2d0}
+.progress-controls{display:grid;gap:10px;padding:16px;background:linear-gradient(145deg,#13223a,#101d32);border:1px solid #2b4160;border-radius:18px;margin-bottom:18px}
+.progress-controls .segmented{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:3px;padding:4px;border:1px solid #293e5b;border-radius:12px;background:#0b1729}.progress-controls .quiz-type-toggle{grid-template-columns:repeat(2,minmax(0,1fr))}.progress-controls .segmented button{min-width:0;min-height:44px;padding:8px 4px;font-size:12px;font-weight:500;border-radius:9px}.progress-controls .segmented button.selected{background:#214166;color:#f1f6ff;box-shadow:inset 0 0 0 1px #345980}
+.progress-controls .position-directions{margin:0}.stat-cards{gap:9px}.stat-cards>div{border:1px solid #263b59;border-radius:14px;background:#101d31;padding:18px}.stat-cards strong{font-variant-numeric:tabular-nums;letter-spacing:-.6px}.stat-cards span{color:#9eb2d0}
 .chart{background:#101d31;border-color:#263b59;padding:18px}.report-notes{gap:7px}.report-notes span{border-radius:8px;font-size:11px}.report-section .chart-title h2{font-weight:600}.table-wrap{background:#101d3180}.history-entry{background:#101d31;border-color:#263b59}
-@media(max-width:380px){.progress-controls{padding:14px}.progress-quiz-label{font-size:12px}.progress-quiz-label select{width:150px}.stat-cards>div{padding:16px 12px}}
+@media(max-width:380px){.progress-controls{padding:12px;gap:8px}.progress-controls .segmented button{font-size:11px;padding:8px 2px}.stat-cards>div{padding:16px 12px}}
 .card-sort{display:flex;align-items:center;justify-content:space-between;gap:12px;margin:14px 0;font-size:12px;color:var(--muted)}
 .card-sort select{max-width:210px;min-height:44px;font-size:12px;border-radius:10px;margin:0}
 .recall-label,.sample-count{display:block;font-size:10px;line-height:1.5;color:var(--muted);font-weight:400;margin-top:3px}
@@ -112,7 +112,7 @@ dialog{border-color:#304968;border-radius:18px;padding:28px 24px;color:#e8eef8;b
 /* Direct recall: balanced seven/six rank rows, with suits in one row. */
 .format-selector{margin-top:18px}.format-selector>span{display:block;font-size:11px;color:var(--muted);margin-bottom:8px}
 .format-toggle{display:flex;padding:4px;gap:4px;border:1px solid var(--line);border-radius:12px}.format-toggle button{flex:1;min-width:0;min-height:44px;font-size:12px;border-radius:9px;padding:8px 5px}
-.format-note{font-size:11px;color:var(--muted);line-height:1.5;margin:10px 0 0}.progress-controls .format-selector{margin:0 0 18px}
+.format-note{font-size:11px;color:var(--muted);line-height:1.5;margin:10px 0 0}.progress-controls .format-selector{margin:0}
 .direct-stage{min-height:210px;padding:16px 0 0}.direct-stage .prompt-card{width:136px;height:190px}
 .recall-controls{max-width:480px;margin:0 auto}.recall-entry{display:flex;align-items:center;justify-content:space-between;gap:12px;border:1px solid var(--line);border-radius:10px;background:#101d31;padding:10px 13px;min-height:50px;margin-bottom:10px}
 .recall-entry span{font-size:11px;color:var(--muted);flex-shrink:0}.recall-entry strong{font-size:17px;font-weight:550;text-align:right}

@@ -125,3 +125,12 @@ All 21 core tests pass, including mode-specific evidence, rolling 7/30-day windo
 - TypeScript checking, Vite production build, service-worker generation, and diff checks pass.
 - Rendered browser checks passed at 390×844 and 320×667: forward target 10 shows positions 8/9; backward target 50 shows positions 52/51; direct-recall number 36 fits its small prompt. No horizontal overflow; compact suit controls stay above navigation. Inspected both sequence layouts and number typography.
 - Completed a full 52-answer Multiple choice run in the browser: 52/52, 100% first-answer accuracy, no penalties, and automatic completion. UI context follows only answers from the current run, with empty reserved slots at the start. Existing grading, timing, history, and scheduler are preserved.
+
+
+## Compact Progress selectors and reload restoration — October 15, 2026
+
+- 89 tests pass. TypeScript checking, production bundling, service-worker generation, and diff checks pass.
+- Real-app interaction checks cover the four accessible selector groups, per-quiz filter retention, Progress navigation/reload/reopening, sorting, time window, scroll position, Browse position, sequence setup, Practice setup, and Settings.
+- Reload recovery checks cover partial numeric/card input, misses and correction timing, reveal/Next behavior, both sequence directions through completion of all 52 unique cards, existing context, pause, exclusion of closed-page time, and prevention of duplicate history.
+- Recovery validation rejects mismatched sessions, formats, sequence positions, malformed values, and stale first-miss data. UI storage failure leaves normal answer saving usable; new tabs do not resume another tab's quiz.
+- Reviewed Mark's supplied phone screenshot. The browser automation helper timed out twice during initialization, so no rendered layout check is claimed for this change.

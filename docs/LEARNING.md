@@ -28,7 +28,7 @@ Pause, visibility changes, or a timer-heartbeat gap over five seconds invalidate
 
 The last four prompt positions are unavailable across directions within a session. Separately, positions answered or exposed within the last minute are flagged as recent exposure. Browsing marks visible positions and hints mark displayed neighbors. Same-session repeats after a minute can contribute independent evidence.
 
-On reload the one-minute guard is reconstructed from recent saved attempts and their hinted neighbors. Unsubmitted browsing/hints are only known while the page stays open. Historical exposure flags stay unchanged because actual past exposures cannot be reconstructed precisely.
+On reload the one-minute guard is reconstructed from recent saved attempts and their hinted neighbors. A valid same-tab quiz checkpoint also preserves recent browsing/hint exposure across a reload; ordinary reopening without that checkpoint only reconstructs saved attempts. Historical exposure flags stay unchanged because actual past exposures cannot be reconstructed precisely.
 
 ## Recent and lifetime model
 
@@ -145,3 +145,12 @@ Direct recall uses all 13 ranks and four suits: select a rank, then select a sui
 Sequence attempts/sessions carry answerFormat and remain separate from both position directions. Sequence memory keys support the format prefix, and fluency comparisons use only the same sequence direction and format. Progress now filters sequence results by format as well as direction and period. Personal bests are separate for each (direction, format); All formats displays separate record cards and labels run formats in the trend/history. Incomplete and legacy countdown runs still do not qualify as full-deck bests.
 
 Rank/suit and digit edits now replace only the answer panel. Prompt artwork, countdown/run timer, progress, and session controls stay mounted while an answer is composed. Focus is restored to the selected control without scrolling. The shared selectors, setup panels, start prompt, reduced-motion behavior, and responsive dialogs use the same restrained UI styles across both quiz types.
+
+
+## Screen and reload state
+
+Progress uses four consistent selector rows with accessible group names and no visible labels. Quiz type switches between Sequence quiz and Position practice; each retains its own direction and answer-format filters. Opening Progress no longer forces sequence results.
+
+Navigation and display preferences use a separate validated deckwise.ui.v1 key: current screen, Deck mode and browsed card, sequence direction/start, report filters, card sort, history expansion, and scroll position. Practice mode, session length, answer formats, speed settings, and the shared statistics period retain their existing storage in settings. No answer-history schema or migration is required. UI preference storage failures do not disable training or overwrite progress.
+
+Same-tab reloads checkpoint the current question and partial entry in session storage, alongside the session ID, active elapsed time, sequence position/context, recent selections, and exposure state. Recovery must agree with saved sessions and attempts; stale or malformed checkpoints are ignored. A recovered quiz is paused, excludes closed-page time, and marks an unanswered interrupted question ineligible for recall timing. Recorded first misses, first response times, penalties, and question IDs are preserved. The snapshot never creates an answer. Finished sessions cannot resume. Ordinary new tabs/reopening restore the last display preferences without taking over another tab's live quiz. Full JSON exports continue to contain history/settings, while these device-local display preferences stay separate.
