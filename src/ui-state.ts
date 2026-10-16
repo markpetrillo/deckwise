@@ -1,4 +1,5 @@
 import {formatOf, isSequence, RANKS, SUITS, type AnswerFormat, type Data, type Direction, type SequenceDirection} from "./core";
+import {focusPrompt} from "./focus";
 import {type RecallInput} from "./recall";
 import {type CardSort} from "./reporting";
 
@@ -16,7 +17,8 @@ export interface ResumeState {
   recent: number[]; exposures: [number,number][]; savedAt: number;
 }
 export interface UiState {
-  version: 1; view: View; deckMode: "quiz" | "browse"; deckIndex: number;
+  version: 1; view: View; deckMode: "browse" | "ribbon" | "grid"; deckIndex: number;
+  practiceType:"sequence"|"position"; cardsExpanded:boolean; historyExpanded:boolean;
   sequenceDirection: SequenceDirection; sequenceStart: "beginning" | "random";
   filter: ReportFilter; positionFilter: "all" | "card-number" | "number-card";
   sequenceFilter: "sequence" | SequenceDirection;
@@ -30,7 +32,7 @@ function pick<T extends string>(value: unknown, values: readonly T[], fallback: 
   return typeof value === "string" && values.includes(value as T) ? value as T : fallback;
 }
 export function defaultUiState(data: Data): UiState {
-  return {version:1,view:"deck",deckMode:"quiz",deckIndex:0,sequenceDirection:"sequence-forward",sequenceStart:"beginning",
+  return {version:1,view:"practice",deckMode:"browse",deckIndex:0,practiceType:"sequence",cardsExpanded:false,historyExpanded:false,sequenceDirection:"sequence-forward",sequenceStart:"beginning",
     filter:"sequence",positionFilter:"all",sequenceFilter:"sequence",reportFormat:formatOf(data.settings),
     sequenceReportFormat:data.settings.sequenceAnswerFormat ?? "multiple-choice",cardSort:"position",historyLimit:12,scrollY:0};
 }
@@ -40,8 +42,11 @@ export function restoreUiState(value: unknown, data: Data): UiState {
   if (!object(value) || value.version !== 1) return d;
   const formats = ["multiple-choice","direct-recall","all"] as const;
   return {...d,
-    view:pick(value.view,["deck","practice","progress","settings"],d.view),
-    deckMode:pick(value.deckMode,["quiz","browse"],d.deckMode),
+    view:value.practiceType===undefined&&value.view==="deck"&&value.deckMode==="quiz"?"practice":pick(value.view,["deck","practice","progress","settings"],d.view),
+    deckMode:pick(value.deckMode,["browse","ribbon","grid"],d.deckMode),
+    practiceType:pick(value.practiceType,["sequence","position"],value.view==="practice"?"position":d.practiceType),
+    cardsExpanded:typeof value.cardsExpanded==="boolean"?value.cardsExpanded:false,
+    historyExpanded:typeof value.historyExpanded==="boolean"?value.historyExpanded:false,
     deckIndex:Number.isInteger(value.deckIndex) && Number(value.deckIndex) >= 0 && Number(value.deckIndex) < 52 ? Number(value.deckIndex) : 0,
     sequenceDirection:pick(value.sequenceDirection,["sequence-forward","sequence-backward"],d.sequenceDirection),
     sequenceStart:pick(value.sequenceStart,["beginning","random"],d.sequenceStart),
@@ -79,7 +84,7 @@ function validResume(value: unknown, data: Data): value is ResumeState {
   const q = value.question;
   if (!session || !object(q) || typeof q.id !== "string" || !q.id || !position(q.position) ||
       !["card-number","number-card","sequence-forward","sequence-backward"].includes(String(q.direction)) ||
-      (session.mode !== "mixed" && q.direction !== session.mode) || q.answerFormat !== formatOf(session) ||
+      (!session.focus && session.mode !== "mixed" && q.direction !== session.mode) || q.answerFormat !== formatOf(session) ||
       !number(q.elapsed) || q.elapsed > value.elapsed || !Number.isInteger(q.wrong) || Number(q.wrong) < 0 ||
       typeof q.lastIncorrect !== "string" || q.lastIncorrect.length > 100 ||
       !["hint","revealed","interrupted","done","exposed"].every(k => typeof q[k] === "boolean") ||
@@ -103,7 +108,10 @@ function validResume(value: unknown, data: Data): value is ResumeState {
       attempt.hint !== q.hint || attempt.revealed !== q.revealed || attempt.interrupted && !q.interrupted ||
       attempt.recentExposure !== q.exposed) return false;
   if (answers.some(a => a.id !== q.id && a.at > Number(value.savedAt)) || value.savedAt < session.startedAt) return false;
-  if (session.runTarget) {
+  if (session.focus) {
+    const completed=answers.filter(a=>a.id!==q.id).length,expected=focusPrompt(session.focus,completed);
+    if(completed>=session.focus.target||q.position!==expected.position||q.direction!==expected.direction||value.elapsed<session.focus.elapsedMs)return false;
+  } else if (session.runTarget) {
     const previous = answers.filter(a => a.id !== q.id);
     const expected = previous.length ? ((previous.at(-1)!.position-1+(session.mode === "sequence-forward" ? 1 : -1)+52)%52)+1 : session.startPosition;
     if (q.position !== expected || value.source !== (previous.at(-1)?.position ?? 0) ||

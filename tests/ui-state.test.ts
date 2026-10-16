@@ -32,7 +32,7 @@ test("blocked or corrupted tab storage falls back to ordinary saved UI preferenc
  const d=emptyData(),saved={...defaultUiState(d),view:"settings"};
  for(const first of [()=>{throw Error("blocked");},()=>"{broken",()=>JSON.stringify({version:2})])
   assert.equal(loadUiState(d,[first,()=>JSON.stringify(saved)]).view,"settings");
- assert.equal(loadUiState(d,[()=>{throw Error("blocked");}]).view,"deck");
+ assert.equal(loadUiState(d,[()=>{throw Error("blocked");}]).view,"practice");
 });
 test("quiz checkpoint recovery checks session, format, input and sequence position",()=>{
  const {data,state}=live();assert.deepEqual(restoreUiState(state,data).resume,state.resume);

@@ -4,11 +4,11 @@ A small, mobile-first Mnemonica practice app. Browse all 52 cards and spend five
 
 **Live app:** https://deckwise-sigma.vercel.app · **Repository:** https://github.com/markpetrillo/deckwise
 
-## MVP
+## Features
 
-- Full-deck gallery with touch scrolling, snap-to-card navigation, arrow keys, and position slider.
-- Card → number, number → card, and mixed multiple-choice practice.
-- Exactly five separate answer cards. Numbers are ascending; card choices sort Ace–King, then Clubs, Diamonds, Hearts, Spades.
+- Full-deck browsing in Cards, free-scrolling Ribbon, and Grid views, with touch navigation, arrow keys, and a position slider.
+- Sequence and position quizzes together in Practice, with Multiple choice and Direct recall.
+- Multiple choice retains five options; Direct recall uses ranks/suits or a digit keypad.
 - First-answer grading, retries, neighbor hints, reveal, pause, and 1/3/5/10-minute sessions.
 - Independent scheduling for the 104 directional associations; errors and slow answers increase practice priority.
 - Accuracy, median response time, speed-target results, daily trends, per-card breakdowns, session history, and raw-attempt details.
@@ -52,12 +52,12 @@ Deckwise install icon: cobalt spade mark in a 5:7 playing-card silhouette, match
 
 Correct answers advance immediately. Pause freezes active timing; revealed answers wait for Next. Delete individual completed sessions from Progress using the trash control. Deletion removes their attempts from reports and rebuilds adaptive memory from the remaining history using the current settings.
 
-Deck → Sequence quiz drills the next or previous card with five card choices. Start from the first/last card or a random position. A run ends after 52 answers, covering every card once (wrapping as needed). Raw active time excludes pauses; scored time adds 5 seconds per wrong selection or reveal. Partial runs stay in history but do not qualify for full-deck personal bests. Pause, reveal, early finish, and immediate advancement work like position practice. Progress has separate sequence filters; these answers never change position-practice statistics or its adaptive schedule.
+Practice → Sequence quiz drills the next or previous card with five card choices. Start from the first/last card or a random position. A run ends after 52 answers, covering every card once (wrapping as needed). Raw active time excludes pauses; scored time adds 5 seconds per wrong selection or reveal. Partial runs stay in history but do not qualify for full-deck personal bests. Pause, reveal, early finish, and immediate advancement work like position practice. Progress has separate sequence filters; these answers never change position-practice statistics or its adaptive schedule.
 Install assets use versioned filenames to avoid cached older icons; the app identity and local progress storage stay the same.
 
 Progress → Sequence quiz shows separate forward/backward personal bests and the last 20 completed runs with raw time, scored time, and accuracy. Existing countdown-based sequence sessions remain available as legacy history; they are excluded from full-deck records.
 
-New installs open on Deck → Sequence quiz, with Browse second. Later reloads restore the current screen and selections. Each run begins with an empty prompt: choose its starting position first (Four of Clubs for forward, Nine of Diamonds for backward), then the neighboring cards. Forward beginning runs end at the Nine of Diamonds after exactly 52 answers. Random starts also test the chosen start first and cover the deck once. The main menu orders Deck before Practice, and Progress remembers its quiz type, direction, answer format, time window, and card sorting.
+New installs open on Practice → Sequence quiz. Deck is dedicated to browsing in Cards, Ribbon, and Grid views. Later reloads restore the current screen and selections. Each run begins with an empty prompt: choose its starting position first (Four of Clubs for forward, Nine of Diamonds for backward), then the neighboring cards. Forward beginning runs end at the Nine of Diamonds after exactly 52 answers. Random starts also test the chosen start first and cover the deck once. The main menu orders Deck before Practice, and Progress remembers its quiz type, direction, answer format, time window, and card sorting.
 
 Position-practice session history and detail views show the selected session length in minutes. Deleted sessions are kept in Progress → Recently deleted, excluded from statistics until restored. Restore recovers answers, full-deck scores, and the review schedule; recovery survives reload and is included in backups. Clearing/resetting browser data removes the recovery history too. Sessions permanently deleted before this feature cannot be recovered without an older backup.
 
@@ -73,3 +73,5 @@ Position practice now derives independent per-direction recall scores from recen
 Position practice now offers **Multiple choice** or **Direct recall**. Direct recall uses all 13 rank tiles plus four suits for number → card, and a 0–9 keypad for card → number (07 and 7 both work). Selecting a suit immediately submits a card answer after choosing its rank. Numeric answers retain Check answer; incomplete entries and rank edits are not graded. First misses, retries, hints, reveals, and interruptions retain the established rules. Statistics and adaptive practice are separated by answer format, with legacy history classified as multiple choice and preserved. Sequence quizzes also offer Direct recall with the same rank/suit controls, preserving the 52-card run, pause/reveal, and five-second penalty rules.
 
 Sequence drills show the two most recently answered cards to the left of a numbered target card. Context fills as the run advances and follows run order in either direction, including random-start wraps. Both Multiple choice and Direct recall use this layout. Position-number cards use centered, responsive tabular numerals in all quiz formats.
+
+Progress offers a short Drill weakest five using the selected report period, direction, and answer format. Each selected mapping appears three times, with other selected prompts between repeats. The full card table and session history are collapsible and remember their state. Deck and Practice use the same compact selector controls as Progress, and reloads retain their selections.

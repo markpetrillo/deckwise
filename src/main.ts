@@ -31,10 +31,12 @@ import {
   type Mode,
   type Attempt,
   type Session,
+  type FocusMapping,
 } from "./core";
 import { emptyRecallInput, editRecallInput, recallPosition, recallDisplay, type RecallInput, type RecallAction } from "./recall";
 import { cardImage, numberCard } from "./cards";
 import {UI_STORE, loadUiState, type UiState, type QuestionState, type View, type ReportFilter} from "./ui-state";
+import {weakestMappings,focusPrompt} from "./focus";
 import { uiIcon } from "./icons";
 import { sessionTrend, directionComparison, practiceEvidence, cardRanking, mappingInsights, type CardSort, sequenceRuns } from "./reporting";
 const app = document.querySelector<HTMLDivElement>("#app")!;
@@ -64,6 +66,7 @@ let sequenceReportFormat: AnswerFormat | "all" = restoredUi.sequenceReportFormat
 let positionFilter = restoredUi.positionFilter, sequenceFilter = restoredUi.sequenceFilter;
 const reportAnswerFormat = () => filter.startsWith("sequence") ? sequenceReportFormat : reportFormat;
 let deckMode = restoredUi.deckMode;
+let practiceType=restoredUi.practiceType,cardsExpanded=restoredUi.cardsExpanded,historyExpanded=restoredUi.historyExpanded;
 let sequenceDirection = restoredUi.sequenceDirection;
 let sequenceStart = restoredUi.sequenceStart;
 let sequenceSource = 1;
@@ -81,6 +84,7 @@ for (const a of data.attempts) {
     if (p >= 1 && p <= 52) lastExposure.set(p,Math.max(lastExposure.get(p) ?? 0,a.at));
 }
 let galleryObserver: ResizeObserver | null = null;
+let deckExposureObserver:IntersectionObserver|null=null;
 let installPrompt: any = null;
 const esc = (value: unknown) =>
   String(value).replace(
@@ -125,7 +129,8 @@ if (restoredUi.resume && !storageProblem) {
   sequenceSource = resume.source;
   recent = resume.recent;
   for (const [p,at] of resume.exposures) lastExposure.set(p,Math.max(lastExposure.get(p) ?? 0,at));
-  view = isSequence(active.mode) ? "deck" : "practice";
+  view = "practice";
+  practiceType=isSequence(active.mode)?"sequence":"position";
   paused = true;
 }
 for (const s of data.sessions)
@@ -137,7 +142,7 @@ function saveUi() {
   else positionFilter = filter as typeof positionFilter;
   const state: UiState = {version:1,view,deckMode,deckIndex,filter:filter as ReportFilter,
     positionFilter,sequenceFilter,sequenceDirection,sequenceStart,reportFormat,sequenceReportFormat,
-    cardSort,historyLimit,scrollY:Math.max(0,window.scrollY || 0),
+    cardSort,historyLimit,practiceType,cardsExpanded,historyExpanded,scrollY:Math.max(0,window.scrollY || 0),
     ...(active && q && !storageConflict && !storageProblem ? {resume:{sessionId:active.id,elapsed:sessionElapsed,
       question:q,source:sequenceSource,recent:recent.slice(-10000),exposures:[...lastExposure],savedAt:Date.now()}} : {})};
   // The active question belongs to this tab; only ordinary UI preferences are
@@ -154,7 +159,7 @@ window.addEventListener("pagehide",checkpointBeforeLeave);
 window.addEventListener("beforeunload",checkpointBeforeLeave);
 
 function chrome(body: string) {
-  app.innerHTML = `<div class="shell"><header class="header"><a href="#" class="brand" data-action="home"><img class="brand-mark" src="/brand-mark.svg" alt="" width="28" height="40"/>deckwise<span class="brand-dot">.</span></a><span class="stack-label">MNEMONICA · 52 CARDS</span><button class="icon-button" data-action="settings" aria-label="Settings">${uiIcon("settings")}</button></header>${storageProblem ? `<div class="warning" role="alert">${esc(storageProblem)} <button data-action="export">Export backup</button></div>` : ""}<main>${body}</main><nav class="nav" aria-label="Main navigation">${[
+  app.innerHTML = `<div class="shell"><header class="header"><a href="#" class="brand" data-action="home"><img class="brand-mark" src="/brand-mark.svg" alt="" width="28" height="40"/>deckwise<span class="brand-dot">.</span></a><button class="icon-button" data-action="settings" aria-label="Settings">${uiIcon("settings")}</button></header>${storageProblem ? `<div class="warning" role="alert">${esc(storageProblem)} <button data-action="export">Export backup</button></div>` : ""}<main>${body}</main><nav class="nav" aria-label="Main navigation">${[
     ["deck", "Deck", "♧"],
     ["practice", "Practice", "◎"],
     ["progress", "Progress", "▥"],
@@ -170,23 +175,30 @@ function chrome(body: string) {
 function render() {
   galleryObserver?.disconnect();
   galleryObserver = null;
-  if (active && isSequence(active.mode)) practice();
+  deckExposureObserver?.disconnect();deckExposureObserver=null;
+  if (active) practice();
   else if (view === "practice") practice();
   else if (view === "deck") deck();
   else if (view === "progress") progress();
   else settings();
   saveUi();
 }
-function practice() {
-  if (!active) {
-    const associations = practiceEvidence(data.attempts, data.settings.mode, period,Date.now(),formatOf(data.settings));
-    const format = formatOf(data.settings);
-    const s = summary(associations), due = STACK.reduce((count,_,i) => count + (["card-number","number-card"] as const).filter(dir => (data.settings.mode === "mixed" || dir === data.settings.mode) && (data.memory[key(i+1,dir,format)]?.due ?? Infinity) <= Date.now()).length,0);
-    chrome(
-      `<section class="start-panel practice-home"><div class="segmented practice-toggle" role="group" aria-label="Practice type">${(["card-number", "number-card", "mixed"] as Mode[]).map((m) => `<button data-mode="${m}" aria-pressed="${data.settings.mode === m}" class="${data.settings.mode === m ? "selected" : ""}">${m === "mixed" ? "Mixed" : modeName(m)}</button>`).join("")}</div>${formatToggle(format,"practice")}<p class="format-note">${format === "direct-recall" ? "Build the answer with digits or rank + suit." : "Choose the answer from five options."}</p><label class="session-length" for="minutes"><span>Session length</span><select id="minutes">${[1, 3, 5, 10].map(n => `<option value="${n}" ${data.settings.minutes === n ? "selected" : ""}>${n} minutes</option>`).join("")}</select></label><button class="primary start" data-action="start" ${storageProblem ? "disabled" : ""}>Start ${data.settings.minutes}-minute session <span>→</span></button><div class="start-note">${data.attempts.some(a => !isSequence(a.direction) && (data.settings.mode === "mixed" || a.direction === data.settings.mode)) ? `${due} associations due · Adaptive review` : `52 cards · ${formatName(format)}`}</div></section><section class="practice-stats" aria-label="Selected practice statistics"><div class="practice-stats-toolbar"><span>${formatName(format)} results</span><div class="segmented stats-period-toggle" role="group" aria-label="Statistics period">${[["7","7 days"],["30","30 days"],["all","All time"]].map(([id,label]) => `<button data-stats-period="${id}" aria-pressed="${period === id}" class="${period === id ? "selected" : ""}">${label}</button>`).join("")}</div></div><div class="mini-stats"><div><strong>${s.eligibleTotal ? s.accuracy.toFixed(0) + "%" : "—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median correct time (sec)</span></div><div><strong>${new Set(associations.map((a) => a.position)).size}<small>/52</small></strong><span>Cards practiced</span></div></div></section>`,
-    );
+function selector(options: readonly (readonly [string,string])[], value:string, attribute:string, label:string) {
+  return `<div class="segmented selector columns-${options.length}" role="group" aria-label="${label}">${options.map(([id,text])=>`<button data-${attribute}="${id}" aria-pressed="${value===id}" class="${value===id?"selected":""}">${text}</button>`).join("")}</div>`;
+}
+function practiceSetup() {
+  const type=selector([["sequence","Sequence quiz"],["position","Position practice"]],practiceType,"practice-type","Quiz type");
+  if(practiceType==="sequence") {
+    chrome(`<section class="selection-panel practice-home">${type}${selector([["sequence-forward","Forward"],["sequence-backward","Backward"]],sequenceDirection,"sequence-direction","Sequence direction")}${formatToggle(data.settings.sequenceAnswerFormat??"multiple-choice","sequence")}${selector([["beginning","From "+(sequenceDirection==="sequence-forward"?"first card":"last card")],["random","Random start"]],sequenceStart,"sequence-start","Starting position")}<button class="primary start" data-action="start-sequence" ${storageProblem?"disabled":""}>Start 52-card run</button></section>`);
     return;
   }
+  const format=formatOf(data.settings);
+  const evidence=practiceEvidence(data.attempts,data.settings.mode,period,Date.now(),format),s=summary(evidence);
+  const due=STACK.reduce((n,_,i)=>n+(["card-number","number-card"] as const).filter(dir=>(data.settings.mode==="mixed"||dir===data.settings.mode)&&(data.memory[key(i+1,dir,format)]?.due??Infinity)<=Date.now()).length,0);
+  chrome(`<section class="selection-panel practice-home">${type}${selector([["card-number","Card → number"],["number-card","Number → card"],["mixed","Mixed"]],data.settings.mode,"mode","Practice direction")}${formatToggle(format,"practice")}${selector([["1","1 min"],["3","3 min"],["5","5 min"],["10","10 min"]],String(data.settings.minutes),"minutes","Session length")}<button class="primary start" data-action="start" ${storageProblem?"disabled":""}>Start ${data.settings.minutes}-minute session</button>${due?`<span class="quiet-count">${due} due</span>`:""}</section><section class="practice-stats">${selector([["7","7 days"],["30","30 days"],["all","All time"]],period,"stats-period","Statistics period")}<div class="mini-stats"><div><strong>${s.eligibleTotal?s.accuracy.toFixed(0)+"%":"—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median recall</span></div><div><strong>${new Set(evidence.map(a=>a.position)).size}<small>/52</small></strong><span>Cards practiced</span></div></div></section>`);
+}
+function practice() {
+  if(!active){practiceSetup();return;}
   if (!q) return;
   const stats = summary(
     data.attempts.filter((a) => a.sessionId === active!.id),
@@ -205,7 +217,7 @@ function practice() {
         ? ""
         : "";
   chrome(
-    `<section class="session-top ${q.answerFormat === "direct-recall" ? "direct-session" : ""}"><div><span class="eyebrow">${isSequence(q.direction) && sequenceSource === 0 ? sequenceStart === "random" ? `Choose position ${q.position}` : q.direction === "sequence-forward" ? "Choose the first card" : "Choose the last card" : modeName(q.direction)}</span>${isSequence(q.direction) ? `<span class="sequence-position">${stats.total - (data.attempts.some(a => a.id === q!.id) ? 1 : 0) + 1} / 52 · ${formatName(q.answerFormat)}</span>` : `<span class="answer-format-label">${formatName(q.answerFormat)}</span>`}</div><div class="session-controls"><button class="session-timer" data-action="pause" aria-label="${paused ? "Resume" : "Pause"} practice"><span id="remaining">${active.runTarget ? runTime(sessionElapsed) : timer(active.duration - sessionElapsed)}</span><span>${paused ? "▶ Resume" : "Ⅱ Pause"}</span></button><button class="text-button end-session" data-action="finish">End session</button></div></section><div class="session-progress"><span id="session-bar" style="width:${active.runTarget ? data.attempts.filter(a => a.sessionId === active!.id && (a.id !== q?.id || q.done)).length / active.runTarget * 100 : Math.min(100, (sessionElapsed / active.duration) * 100)}%"></span></div><div class="question-stage ${paused ? "paused" : ""} ${q.answerFormat === "direct-recall" ? "direct-stage" : ""} ${isSequence(q.direction) ? "sequence-stage" : ""}">${questionPrompt()}</div><div class="feedback ${q.done ? "positive" : q.wrong ? "negative" : ""}" role="status" aria-live="polite">${paused ? "Paused" : result}</div>${answerControls()}<div class="practice-actions">${q.done ? q.revealed ? `<button class="primary next" data-action="next" ${paused ? "disabled" : ""}>Next card <span>→</span></button>` : `<span class="next-status">${paused ? "Resume to continue" : "Next card…"}</span>` : `${isSequence(q.direction) ? "" : `<button class="text-button" data-action="hint" ${paused ? "disabled" : ""}>☼ Neighbor hint</button>`}<button class="text-button" data-action="reveal" ${paused ? "disabled" : ""}>Reveal answer</button>`}</div>${q.hint && !q.done ? `<div class="hint-panel">${q.position > 1 ? `<div><span>Before</span>${cardImage(q.position - 1)}</div>` : "<span>Top of deck</span>"}${q.position < 52 ? `<div><span>After</span>${cardImage(q.position + 1)}</div>` : "<span>Bottom of deck</span>"}</div>` : ""}<div class="session-bottom"><span>${stats.total} answered · ${active.runTarget ? sequenceResult(active, data.attempts).accuracy.toFixed(0) + "% first try" : (stats.eligibleTotal ? stats.accuracy.toFixed(0) + "%" : "—") + " independent"}</span></div>`,
+    `<section class="session-top ${q.answerFormat === "direct-recall" ? "direct-session" : ""}"><div><span class="eyebrow">${isSequence(q.direction) && !active.focus && sequenceSource === 0 ? sequenceStart === "random" ? `Choose position ${q.position}` : q.direction === "sequence-forward" ? "Choose the first card" : "Choose the last card" : modeName(q.direction)}</span>${active.focus?`<span class="sequence-position">Drill ${active.focus.mappings.length} · ${stats.total-(data.attempts.some(a=>a.id===q!.id)?1:0)+1}/${active.focus.target} · ${formatName(q.answerFormat)}</span>`:isSequence(q.direction) ? `<span class="sequence-position">${stats.total - (data.attempts.some(a => a.id === q!.id) ? 1 : 0) + 1} / 52 · ${formatName(q.answerFormat)}</span>` : `<span class="answer-format-label">${formatName(q.answerFormat)}</span>`}</div><div class="session-controls"><button class="session-timer" data-action="pause" aria-label="${paused ? "Resume" : "Pause"} practice"><span id="remaining">${(active.runTarget||active.focus) ? runTime(sessionElapsed) : timer(active.duration - sessionElapsed)}</span><span>${paused ? "▶ Resume" : "Ⅱ Pause"}</span></button><button class="text-button end-session" data-action="finish">End session</button></div></section><div class="session-progress"><span id="session-bar" style="width:${(active.runTarget||active.focus) ? data.attempts.filter(a => a.sessionId === active!.id && (a.id !== q?.id || q.done)).length / (active.runTarget??active.focus!.target) * 100 : Math.min(100, (sessionElapsed / active.duration) * 100)}%"></span></div><div class="question-stage ${paused ? "paused" : ""} ${q.answerFormat === "direct-recall" ? "direct-stage" : ""} ${isSequence(q.direction) ? "sequence-stage" : ""}">${questionPrompt()}</div><div class="feedback ${q.done ? "positive" : q.wrong ? "negative" : ""}" role="status" aria-live="polite">${paused ? "Paused" : result}</div>${answerControls()}<div class="practice-actions">${q.done ? q.revealed ? `<button class="primary next" data-action="next" ${paused ? "disabled" : ""}>Next card <span>→</span></button>` : `<span class="next-status">${paused ? "Resume to continue" : "Next card…"}</span>` : `${isSequence(q.direction) ? "" : `<button class="text-button" data-action="hint" ${paused ? "disabled" : ""}>☼ Neighbor hint</button>`}<button class="text-button" data-action="reveal" ${paused ? "disabled" : ""}>Reveal answer</button>`}</div>${q.hint && !q.done ? `<div class="hint-panel">${q.position > 1 ? `<div><span>Before</span>${cardImage(q.position - 1)}</div>` : "<span>Top of deck</span>"}${q.position < 52 ? `<div><span>After</span>${cardImage(q.position + 1)}</div>` : "<span>Bottom of deck</span>"}</div>` : ""}<div class="session-bottom"><span>${stats.total} answered · ${isSequence(q.direction) ? sequenceResult(active, data.attempts).accuracy.toFixed(0) + "% first try" : (stats.eligibleTotal ? stats.accuracy.toFixed(0) + "%" : "—") + " independent"}</span></div>`,
   );
 }
 function questionPrompt() {
@@ -213,7 +225,9 @@ function questionPrompt() {
   if (isSequence(q.direction)) {
     // Only completed earlier questions in this run provide context. Current
     // wrong/revealed answers must not move the sequence or reveal the target.
-    const previous = data.attempts.filter(a => a.sessionId === active!.id && a.id !== q!.id).slice(-2);
+    const opposite=q.direction==="sequence-forward"?"sequence-backward":"sequence-forward";
+    const one=sequenceNeighbor(q.position,opposite),two=sequenceNeighbor(one,opposite);
+    const previous = active!.focus?[{position:two},{position:one}]:data.attempts.filter(a => a.sessionId === active!.id && a.id !== q!.id).slice(-2);
     const slots = [...Array(2-previous.length).fill(null), ...previous];
     return `<div class="sequence-prompt" role="group" aria-label="Previous two cards and target position">${slots.map(a => a ? `<div class="sequence-card sequence-context" data-context-position="${a.position}" role="group" aria-label="Position ${a.position}">${cardImage(a.position)}</div>` : '<div class="sequence-card sequence-placeholder" aria-hidden="true"></div>').join("")}<div class="prompt-card sequence-card sequence-target">${numberCard(q.position)}</div></div>`;
   }
@@ -223,7 +237,7 @@ function questionPrompt() {
 function formatToggle(format: AnswerFormat | "all", context: "practice" | "sequence" | "report") {
   const options: [AnswerFormat | "all",string][] = [["multiple-choice","Multiple choice"],["direct-recall","Direct recall"]];
   if (context === "report") options.push(["all","All formats"]);
-  return `<div class="format-selector">${context === "report" ? "" : "<span>Answer format</span>"} <div class="segmented format-toggle" role="group" aria-label="Answer format">${options.map(([id,label]) => `<button data-${context}-format="${id}" aria-pressed="${format === id}" class="${format === id ? "selected" : ""}">${label}</button>`).join("")}</div></div>`;
+  return `<div class="format-selector"><div class="segmented format-toggle" role="group" aria-label="Answer format">${options.map(([id,label]) => `<button data-${context}-format="${id}" aria-pressed="${format === id}" class="${format === id ? "selected" : ""}">${label}</button>`).join("")}</div></div>`;
 }
 function answerControls() {
   if (!q) return "";
@@ -241,7 +255,7 @@ function directAnswerContent() {
     ? `<div class="digit-grid" role="group" aria-label="Position digits">${"1234567890".split("").map(d => `<button class="recall-tile digit-tile" data-digit="${d}" aria-label="Digit ${d}" ${disabled}>${d}</button>`).join("")}</div><div class="recall-edit"><button data-action="recall-backspace" aria-label="Delete last digit" ${disabled || (!q.input.digits ? "disabled" : "")}>⌫</button><button data-action="recall-clear" ${disabled}>Clear</button></div>`
     : `<div class="rank-grid" role="group" aria-label="Card rank">${RANKS.split("").map(rank => `<button class="recall-tile ${q!.input.rank === rank ? "selected" : ""}" data-rank="${rank}" aria-label="${rankNames[rank] ?? "Rank "+rank}" aria-pressed="${q!.input.rank === rank}" ${disabled}>${rank === "T" ? "10" : rank}</button>`).join("")}</div><div class="suit-grid" role="group" aria-label="Card suit">${Object.keys(SUITS).map(suit => `<button class="recall-tile suit-tile ${suit === "D" || suit === "H" ? "red-suit" : ""} ${q!.input.suit === suit ? "selected" : ""}" data-suit="${suit}" aria-label="${SUITS[suit]}, submit answer" aria-pressed="${q!.input.suit === suit}" ${disabled || (!q!.input.rank || q!.selected.includes(recallPosition(q!.direction,{...q!.input,suit}) ?? 0) ? "disabled" : "")}>${suits[suit]}</button>`).join("")}</div>`;
   const display = q.done ? q.direction === "card-number" ? String(q.position).padStart(2,"0") : cardName(q.position) : recallDisplay(q.direction,q.input);
-  return `<div class="recall-entry" aria-live="polite"><span>${q.done ? "Answer" : "Your answer"}</span><strong>${display}</strong></div>${controls}${q.direction === "card-number" ? `<button class="primary recall-submit" data-action="recall-submit" ${ready ? "" : "disabled"}>Check answer</button>` : ""}<p class="recall-help">${q.done ? "Answer revealed." : position !== null && q.selected.includes(position) ? "Already tried. Change your answer." : q.direction === "card-number" ? "Enter 1–52. Leading zeros are accepted." : "Choose a rank, then a suit to answer."}</p>`;
+  return `<div class="recall-entry" aria-live="polite"><span>${q.done ? "Answer" : "Your answer"}</span><strong>${display}</strong></div>${controls}${q.direction === "card-number" ? `<button class="primary recall-submit" data-action="recall-submit" ${ready ? "" : "disabled"}>Check answer</button>` : ""}<p class="recall-help">${q.done ? "" : position !== null && q.selected.includes(position) ? "Already tried. Change your answer." : q.direction === "card-number" ? "" : ""}</p>`;
 }
 function changeRecallInput(action: RecallAction) {
   if (!q || q.answerFormat !== "direct-recall" || paused || q.done || storageConflict) return;
@@ -268,13 +282,18 @@ function submitRecall() {
 }
 
 function newQuestion() {
-  if (active?.runTarget && q?.done && data.attempts.filter(a => a.sessionId === active!.id).length >= active.runTarget) { finish(true); return; }
-  if (active && isSequence(active.mode) && q) sequenceSource = q.position;
-  const direction: Direction =
-    active && isSequence(active.mode) ? active.mode as SequenceDirection : data.settings.mode === "mixed"
-      ? mixedDirection(data.attempts.filter(a => a.sessionId === active?.id))
-      : data.settings.mode;
-  const position = isSequence(direction) ? sequenceSource === 0 ? active!.startPosition! : sequenceNeighbor(sequenceSource, direction as SequenceDirection) : choose(data, direction, recent,Date.now(),Math.random,formatOf(active!));
+ const answered=data.attempts.filter(a=>a.sessionId===active?.id).length;
+ if(active?.focus&&q?.done&&answered>=active.focus.target){finish(true);return;}
+ if(active?.runTarget&&q?.done&&answered>=active.runTarget){finish(true);return;}
+ if(active&&isSequence(active.mode)&&q)sequenceSource=q.position;
+ const focused=active?.focus?focusPrompt(active.focus,answered):null;
+ const direction:Direction=focused?.direction??(active&&isSequence(active.mode)?active.mode as SequenceDirection:data.settings.mode==="mixed"?mixedDirection(data.attempts.filter(a=>a.sessionId===active?.id)):data.settings.mode);
+ const position=focused?.position??(isSequence(direction)?sequenceSource===0?active!.startPosition!:sequenceNeighbor(sequenceSource,direction as SequenceDirection):choose(data,direction,recent,Date.now(),Math.random,formatOf(active!)));
+ if(focused&&isSequence(direction)){
+  const opposite=direction==="sequence-forward"?"sequence-backward":"sequence-forward";
+  const previous=sequenceNeighbor(position,opposite),before=sequenceNeighbor(previous,opposite);
+  lastExposure.set(previous,Date.now());lastExposure.set(before,Date.now());
+ }
   const exposed = recentlyExposed(position,lastExposure);
   recent.push(position);
   q = {
@@ -305,16 +324,17 @@ function startSequence() {
   sequenceSource = 0;
   start(sequenceDirection, startPosition);
 }
-function start(mode: Mode = data.settings.mode, startPosition = 1) {
+function start(mode: Mode = data.settings.mode, startPosition = 1, focus?:FocusMapping[], answerFormat?:AnswerFormat) {
   if (storageProblem) return;
+  view="practice";practiceType=isSequence(mode)?"sequence":"position";
   active = {
     id: crypto.randomUUID(),
     startedAt: Date.now(),
     endedAt: null,
     mode,
-    answerFormat: isSequence(mode) ? data.settings.sequenceAnswerFormat ?? "multiple-choice" : formatOf(data.settings),
-    duration: isSequence(mode) ? 0 : data.settings.minutes * 60000,
-    ...(isSequence(mode) ? {runTarget:52, startPosition, elapsedMs:0, completed:false} : {}),
+    answerFormat: answerFormat??(isSequence(mode) ? data.settings.sequenceAnswerFormat ?? "multiple-choice" : formatOf(data.settings)),
+    duration: focus||isSequence(mode) ? 0 : data.settings.minutes * 60000,
+    ...(focus?{focus:{mappings:focus,target:focus.length*3,elapsedMs:0,completed:false}}:isSequence(mode) ? {runTarget:52, startPosition, elapsedMs:0, completed:false} : {}),
   };
   data.sessions.push(active);
   sessionElapsed = 0;
@@ -327,6 +347,7 @@ function start(mode: Mode = data.settings.mode, startPosition = 1) {
 function persistAttempt() {
   if (!q || !active || q.firstCorrect === null) return;
   if (active.runTarget) active.elapsedMs = sessionElapsed;
+  if (active.focus) active.focus.elapsedMs = sessionElapsed;
   const a: Attempt = {
     id: q.id,
     sessionId: active.id,
@@ -394,6 +415,7 @@ function finish(completed = false) {
   else reportFormat = formatOf(active);
   active.endedAt = Date.now();
   if (active.runTarget) {active.elapsedMs = sessionElapsed; active.completed = completed;}
+  if (active.focus) {active.focus.elapsedMs=sessionElapsed;active.focus.completed=completed;}
   save();
   active = null;
   q = null;
@@ -401,12 +423,15 @@ function finish(completed = false) {
   const attempts = data.attempts.filter((a) => a.sessionId === id),
     s = summary(attempts);
   render();
+  if(session.focus){
+    showDialog(`<h2>${session.focus.completed?"Drill complete":"Drill ended"}</h2><p>${attempts.length}/${session.focus.target} · ${formatName(formatOf(session))} · ${runTime(sessionElapsed)}</p><div class="summary-grid"><div><strong>${s.eligibleTotal?s.accuracy.toFixed(0)+"%":"—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median recall</span></div><div><strong>${attempts.filter(a=>!a.firstCorrect).length}</strong><span>First misses</span></div><div><strong>${isSequence(session.mode)?runTime(sessionElapsed+attempts.reduce((n,a)=>n+a.wrong+(a.revealed?1:0),0)*5000):s.hints}</strong><span>${isSequence(session.mode)?"Scored time":"Hints"}</span></div></div><button class="primary" data-action="summary-progress">View progress →</button>`);return;
+  }
   if (session.runTarget) {
     showDialog(`${runResults(session)}<button class="primary" data-action="summary-progress">View progress →</button>`);
     return;
   }
   showDialog(
-    `<h2>Session results</h2><p>${s.total} questions answered in ${timer(sessionElapsed)} of active practice.</p><div class="summary-grid"><div><strong>${s.eligibleTotal ? s.accuracy.toFixed(0) + "%" : "—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median correct time (sec)</span></div><div><strong>${s.wrong}</strong><span>First-answer misses</span></div><div><strong>${s.hints}</strong><span>Hints used</span></div></div><p class="muted">Results saved on this device. Unanswered questions are excluded.</p><button class="primary" data-action="summary-progress">View progress →</button>`,
+    `<h2>Session results</h2><p>${s.total} questions answered in ${timer(sessionElapsed)} of active practice.</p><div class="summary-grid"><div><strong>${s.eligibleTotal ? s.accuracy.toFixed(0) + "%" : "—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median recall</span></div><div><strong>${s.wrong}</strong><span>First-answer misses</span></div><div><strong>${s.hints}</strong><span>Hints used</span></div></div><button class="primary" data-action="summary-progress">View progress →</button>`,
   );
 }
 function tick() {
@@ -427,15 +452,15 @@ function tick() {
 setInterval(() => {
   tick();
   if (!active) return;
-  if (!active.runTarget && sessionElapsed >= active.duration) {
+  if (!active.runTarget && !active.focus && sessionElapsed >= active.duration) {
     finish();
     return;
   }
   const remain = document.querySelector("#remaining"),
     bar = document.querySelector<HTMLElement>("#session-bar");
-  if (remain) remain.textContent = active.runTarget ? runTime(sessionElapsed) : timer(active.duration - sessionElapsed);
+  if (remain) remain.textContent = (active.runTarget||active.focus) ? runTime(sessionElapsed) : timer(active.duration - sessionElapsed);
   if (bar)
-    bar.style.width = `${active.runTarget ? data.attempts.filter(a => a.sessionId === active!.id && (a.id !== q?.id || q.done)).length / active.runTarget * 100 : Math.min(100, (sessionElapsed / active.duration) * 100)}%`;
+    bar.style.width = `${(active.runTarget||active.focus) ? data.attempts.filter(a => a.sessionId === active!.id && (a.id !== q?.id || q.done)).length / (active.runTarget??active.focus!.target) * 100 : Math.min(100, (sessionElapsed / active.duration) * 100)}%`;
 }, 200);
 document.addEventListener("visibilitychange", () => {
   if (active) {
@@ -467,66 +492,50 @@ window.addEventListener("storage", (e) => {
     }
   render();
 });
-function deckTabs() {
-  return `<div class="segmented deck-tabs" role="group" aria-label="Deck mode"><button data-deck-mode="quiz" class="${deckMode === "quiz" ? "selected" : ""}" aria-pressed="${deckMode === "quiz"}">Sequence quiz</button><button data-deck-mode="browse" class="${deckMode === "browse" ? "selected" : ""}" aria-pressed="${deckMode === "browse"}">Browse</button></div>`;
+function galleryStep(gallery:HTMLElement) {
+  return gallery.querySelector<HTMLElement>(".gallery-slide")?.offsetWidth || gallery.clientWidth;
 }
 function deck() {
-  if (deckMode === "quiz") {
-    const format = data.settings.sequenceAnswerFormat ?? "multiple-choice";
-    chrome(`${deckTabs()}<section class="start-panel practice-home sequence-setup"><span class="control-label">Direction</span><div class="segmented practice-toggle two-options" role="group" aria-label="Sequence direction">${(["sequence-forward", "sequence-backward"] as SequenceDirection[]).map(dir => `<button data-sequence-direction="${dir}" class="${sequenceDirection === dir ? "selected" : ""}" aria-pressed="${sequenceDirection === dir}">${dir === "sequence-forward" ? "Forward" : "Backward"}</button>`).join("")}</div>${formatToggle(format,"sequence")}<p class="format-note">${format === "direct-recall" ? "Choose a rank, then a suit to answer." : "Choose each card from five options."}</p><label class="session-length" for="sequence-start">Start at<select id="sequence-start"><option value="beginning" ${sequenceStart === "beginning" ? "selected" : ""}>${sequenceDirection === "sequence-forward" ? "First card" : "Last card"}</option><option value="random" ${sequenceStart === "random" ? "selected" : ""}>Random position</option></select></label><button class="primary start" data-action="start-sequence" ${storageProblem ? "disabled" : ""}>Start 52-card run</button><p class="start-note">52 answers · timed run · +5 seconds per miss or reveal</p></section>`);
+  const tabs=selector([["browse","Cards"],["ribbon","Ribbon"],["grid","Grid"]],deckMode,"deck-mode","Deck view");
+  if(deckMode==="grid") {
+    chrome(`<section class="selection-panel">${tabs}</section><div class="deck-grid" aria-label="Mnemonica deck">${STACK.map((_,i)=>`<button data-browse-position="${i+1}" data-exposure-position="${i+1}" class="deck-grid-card ${i===deckIndex?"selected":""}" aria-label="Position ${i+1}, ${cardName(i+1)}"><span>${i+1}</span>${cardImage(i+1)}</button>`).join("")}</div>`);
+    observeDeckExposure();
     return;
   }
-  chrome(
-    `${deckTabs()}<div class="gallery" tabindex="0" aria-label="Mnemonica deck, swipe or use arrow keys">${STACK.map((_, i) => `<article class="gallery-slide" aria-label="Position ${i + 1}, ${cardName(i + 1)}"><div class="position-pill">${i + 1}<span> / 52</span></div><div class="gallery-card">${cardImage(i + 1)}</div></article>`).join("")}</div><div class="gallery-controls"><button class="round" data-action="previous" aria-label="Previous card">←</button><span id="deck-position">${deckIndex + 1} of 52</span><button class="round" data-action="following" aria-label="Next card">→</button></div><label class="jump-label" for="jump">Jump to position <span id="jump-value">${deckIndex + 1}</span></label><input id="jump" type="range" min="1" max="52" value="${deckIndex + 1}" aria-label="Jump to deck position"/>`,
-  );
-  const gallery = document.querySelector<HTMLDivElement>(".gallery")!;
-  gallery.scrollLeft = gallery.clientWidth * deckIndex;
-  gallery.addEventListener(
-    "scroll",
-    () => {
-      if (view !== "deck" || !gallery.isConnected) return;
-      deckIndex = Math.max(
-        0,
-        Math.min(51, Math.round(gallery.scrollLeft / gallery.clientWidth)),
-      );
-      document.querySelector("#deck-position")!.textContent =
-        `${deckIndex + 1} of 52`;
-      document.querySelector("#jump-value")!.textContent = String(
-        deckIndex + 1,
-      );
-      (document.querySelector("#jump") as HTMLInputElement).value = String(
-        deckIndex + 1,
-      );
-      lastExposure.set(deckIndex + 1, Date.now());
-      saveUi();
-    },
-    { passive: true },
-  );
-  lastExposure.set(deckIndex + 1, Date.now());
-  gallery.addEventListener("keydown", (e) => {
-    if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
-      e.preventDefault();
-      goDeck(deckIndex + (e.key === "ArrowRight" ? 1 : -1));
-    }
+  chrome(`<section class="selection-panel">${tabs}</section><div class="gallery ${deckMode==="ribbon"?"gallery-ribbon":""}" tabindex="0" aria-label="Mnemonica deck, swipe or use arrow keys">${STACK.map((_,i)=>`<article class="gallery-slide" data-exposure-position="${i+1}" aria-label="Position ${i+1}, ${cardName(i+1)}"><div class="position-pill">${i+1}<span> / 52</span></div><div class="gallery-card">${cardImage(i+1)}</div></article>`).join("")}</div><div class="gallery-controls"><button class="round" data-action="previous" aria-label="Previous card">←</button><span id="deck-position">${deckIndex+1} of 52</span><button class="round" data-action="following" aria-label="Next card">→</button></div><span id="jump-value" class="sr-only">${deckIndex+1}</span><input id="jump" type="range" min="1" max="52" value="${deckIndex+1}" aria-label="Jump to deck position"/>`);
+  const gallery=document.querySelector<HTMLDivElement>(".gallery")!;
+  gallery.scrollLeft=galleryStep(gallery)*deckIndex;
+  gallery.addEventListener("scroll",()=>{
+    if(view!=="deck"||!gallery.isConnected)return;
+    deckIndex=Math.max(0,Math.min(51,Math.round(gallery.scrollLeft/galleryStep(gallery))));
+    document.querySelector("#deck-position")!.textContent=`${deckIndex+1} of 52`;
+    document.querySelector("#jump-value")!.textContent=String(deckIndex+1);
+    (document.querySelector("#jump") as HTMLInputElement).value=String(deckIndex+1);
+    const visible=deckMode==="ribbon"?Math.ceil(gallery.clientWidth/galleryStep(gallery)):1;
+    for(let i=deckIndex;i<Math.min(52,deckIndex+visible);i++)lastExposure.set(i+1,Date.now());
+    saveUi();
+  },{passive:true});
+  lastExposure.set(deckIndex+1,Date.now());
+  gallery.addEventListener("keydown",e=>{
+    if(e.key==="ArrowRight"||e.key==="ArrowLeft"){e.preventDefault();goDeck(deckIndex+(e.key==="ArrowRight"?1:-1));}
   });
-  galleryObserver = new ResizeObserver(() => {
-    gallery.scrollTo({
-      left: gallery.clientWidth * deckIndex,
-      behavior: "instant",
-    });
-  });
+  galleryObserver=new ResizeObserver(()=>gallery.scrollTo({left:galleryStep(gallery)*deckIndex,behavior:"instant"}));
   galleryObserver.observe(gallery);
+  observeDeckExposure(gallery);
 }
-function goDeck(index: number, instant = false) {
-  deckIndex = Math.max(0, Math.min(51, index));
-  saveUi();
-  const gallery = document.querySelector<HTMLDivElement>(".gallery")!;
-  gallery.scrollTo({
-    left: gallery.clientWidth * deckIndex,
-    behavior: instant || matchMedia("(prefers-reduced-motion: reduce)").matches
-      ? "instant"
-      : "smooth",
-  });
+function observeDeckExposure(root:HTMLElement|null=null) {
+  if(typeof IntersectionObserver==="undefined")return;
+  deckExposureObserver=new IntersectionObserver(entries=>{
+    if(view!=="deck")return;
+    for(const entry of entries)if(entry.isIntersecting&&entry.target.isConnected)
+      lastExposure.set(Number((entry.target as HTMLElement).dataset.exposurePosition),Date.now());
+  },{root,threshold:0.6});
+  app.querySelectorAll<HTMLElement>("[data-exposure-position]").forEach(el=>deckExposureObserver!.observe(el));
+}
+function goDeck(index:number,instant=false) {
+  deckIndex=Math.max(0,Math.min(51,index));saveUi();
+  const gallery=document.querySelector<HTMLDivElement>(".gallery");
+  gallery?.scrollTo({left:galleryStep(gallery)*deckIndex,behavior:instant||matchMedia("(prefers-reduced-motion: reduce)").matches?"instant":"smooth"});
 }
 function filtered() {
   return data.attempts.filter(
@@ -554,16 +563,16 @@ function trend(attempts: Attempt[]): string {
     }).join(" ");
   };
   const label = (s: Session) => esc(new Date(s.startedAt).toLocaleString(undefined,{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}));
-  return `<div class="chart session-trend"><div class="chart-title"><h2>Accuracy &amp; speed</h2><span>Last ${sessions.length} sessions</span></div><div class="trend-legend"><span class="accuracy-key">Accuracy (%)</span><span class="speed-key">Median correct time (sec)</span></div><svg viewBox="0 0 380 185" role="img" aria-label="Session accuracy on the left percent axis and median correct-answer time on the right seconds axis. Exact session values follow below."><text x="8" y="19" font-size="10" fill="#79b7ff">%</text><text x="350" y="19" font-size="10" fill="#d1b6ff">sec</text>${[0,50,100].map(n => `<line x1="42" x2="338" y1="${accuracyY(n)}" y2="${accuracyY(n)}" stroke="#2c3e5a" stroke-dasharray="3 4"/><text x="30" y="${accuracyY(n)+3}" text-anchor="end" font-size="10" fill="#79b7ff">${n}</text><text x="350" y="${accuracyY(n)+3}" font-size="10" fill="#d1b6ff">${Number((maxSeconds*n/100).toFixed(1))}</text>`).join("")}<path d="${path("accuracy")}" fill="none" stroke="#79b7ff" stroke-width="2.5"/><path d="${path("speed")}" fill="none" stroke="#d1b6ff" stroke-width="2.5"/>${points.map(p => `${p.stats.eligibleTotal ? `<circle cx="${p.x}" cy="${accuracyY(p.stats.accuracy)}" r="4" fill="#79b7ff"><title>${label(p.session)}: ${p.stats.accuracy.toFixed(0)}% accuracy</title></circle>` : ""}${p.stats.medianMs !== null ? `<circle cx="${p.x}" cy="${speedY(p.stats.medianMs)}" r="4" fill="#d1b6ff"><title>${label(p.session)}: ${fmtTime(p.stats.medianMs)} median correct answer</title></circle>` : ""}`).join("")}<text x="42" y="171" font-size="10" fill="#9aabc6">Oldest</text><text x="338" y="171" text-anchor="end" font-size="10" fill="#9aabc6">Newest</text></svg><p class="muted compact trend-note">Each point is one session. Higher accuracy and fewer seconds indicate improvement.</p><details><summary>Session accuracy &amp; speed</summary><div class="table-wrap"><table><thead><tr><th>Session</th><th>Answers</th><th>Accuracy</th><th>Median</th></tr></thead><tbody>${[...sessions].reverse().map(({session,stats}) => `<tr><td>${label(session)}<br/><small>${session.duration / 60000} min · ${filter === "all" ? modeName(session.mode) : modeName(filter as Direction)}</small></td><td>${stats.total}</td><td>${stats.eligibleTotal ? stats.accuracy.toFixed(0)+"%" : "—"}</td><td>${fmtTime(stats.medianMs)}</td></tr>`).join("")}</tbody></table></div></details></div>`;
+  return `<div class="chart session-trend"><div class="chart-title"><span>Last ${sessions.length} sessions</span></div><div class="trend-legend"><span class="accuracy-key">Accuracy (%)</span><span class="speed-key">Median correct time (sec)</span></div><svg viewBox="0 0 380 185" role="img" aria-label="Session accuracy on the left percent axis and median correct-answer time on the right seconds axis. Exact session values follow below."><text x="8" y="19" font-size="10" fill="#79b7ff">%</text><text x="350" y="19" font-size="10" fill="#d1b6ff">sec</text>${[0,50,100].map(n => `<line x1="42" x2="338" y1="${accuracyY(n)}" y2="${accuracyY(n)}" stroke="#2c3e5a" stroke-dasharray="3 4"/><text x="30" y="${accuracyY(n)+3}" text-anchor="end" font-size="10" fill="#79b7ff">${n}</text><text x="350" y="${accuracyY(n)+3}" font-size="10" fill="#d1b6ff">${Number((maxSeconds*n/100).toFixed(1))}</text>`).join("")}<path d="${path("accuracy")}" fill="none" stroke="#79b7ff" stroke-width="2.5"/><path d="${path("speed")}" fill="none" stroke="#d1b6ff" stroke-width="2.5"/>${points.map(p => `${p.stats.eligibleTotal ? `<circle cx="${p.x}" cy="${accuracyY(p.stats.accuracy)}" r="4" fill="#79b7ff"><title>${label(p.session)}: ${p.stats.accuracy.toFixed(0)}% accuracy</title></circle>` : ""}${p.stats.medianMs !== null ? `<circle cx="${p.x}" cy="${speedY(p.stats.medianMs)}" r="4" fill="#d1b6ff"><title>${label(p.session)}: ${fmtTime(p.stats.medianMs)} median correct answer</title></circle>` : ""}`).join("")}<text x="42" y="171" font-size="10" fill="#9aabc6">Oldest</text><text x="338" y="171" text-anchor="end" font-size="10" fill="#9aabc6">Newest</text></svg><details><summary>Session accuracy &amp; speed</summary><div class="table-wrap"><table><thead><tr><th>Session</th><th>Answers</th><th>Accuracy</th><th>Median</th></tr></thead><tbody>${[...sessions].reverse().map(({session,stats}) => `<tr><td>${label(session)}<br/><small>${session.duration / 60000} min · ${filter === "all"||filter==="sequence" ? sessionDirectionName(session) : modeName(filter as Direction)}</small></td><td>${stats.total}</td><td>${stats.eligibleTotal ? stats.accuracy.toFixed(0)+"%" : "—"}</td><td>${fmtTime(stats.medianMs)}</td></tr>`).join("")}</tbody></table></div></details></div>`;
 }
 function runResults(session: Session) {
   const r = sequenceResult(session, data.attempts);
-  return `<h2>${r.complete ? "Deck completed" : "Run ended early"}</h2><p>${modeName(session.mode)} · ${formatName(formatOf(session))} · ${r.total}/52 answered · start position ${session.startPosition}</p><div class="summary-grid"><div><strong>${runTime(r.elapsedMs)}</strong><span>Active time</span></div><div><strong>${r.accuracy.toFixed(0)}%</strong><span>First-answer accuracy</span></div><div><strong>${runTime(r.scoredMs)}</strong><span>Scored time</span></div><div><strong>+${r.penalties * 5}s</strong><span>${r.penalties} penalties</span></div></div><p class="muted">5 seconds per wrong selection or reveal. Paused time is excluded. ${r.complete ? "Completed runs count toward personal bests." : "Partial runs do not count toward personal bests."}</p>`;
+  return `<h2>${r.complete ? "Deck completed" : "Run ended early"}</h2><p>${sessionDirectionName(session)} · ${formatName(formatOf(session))} · ${r.total}/52 answered · start position ${session.startPosition}</p><div class="summary-grid"><div><strong>${runTime(r.elapsedMs)}</strong><span>Active time</span></div><div><strong>${r.accuracy.toFixed(0)}%</strong><span>First-answer accuracy</span></div><div><strong>${runTime(r.scoredMs)}</strong><span>Scored time</span></div><div><strong>+${r.penalties * 5}s</strong><span>${r.penalties} penalties</span></div></div>`;
 }
 function sequenceBests() {
   const formats: AnswerFormat[] = sequenceReportFormat === "all" ? ["multiple-choice","direct-recall"] : [sequenceReportFormat];
   const directions = (["sequence-forward","sequence-backward"] as SequenceDirection[]).filter(dir => filter === "sequence" || filter === dir);
-  return `<section class="report-section"><h2>Full-deck runs</h2><div class="summary-grid">${directions.flatMap(dir => formats.map(format => {
+  return `<section class="report-section" aria-label="Full-deck records"><div class="summary-grid">${directions.flatMap(dir => formats.map(format => {
     const runs = sequenceRuns(data.sessions,data.attempts,dir,format,period);
     const best = [...runs].sort((a,b) => a.r.scoredMs! - b.r.scoredMs!)[0];
     const latest = runs.at(-1);
@@ -572,10 +581,10 @@ function sequenceBests() {
 }
 function sequenceTrend() {
   const runs = sequenceRuns(data.sessions,data.attempts,filter as SequenceDirection | "sequence",sequenceReportFormat,period).slice(-20);
-  if (!runs.length) return '<p class="muted">Complete a full-deck run to start tracking speed and accuracy over time.</p>';
+  if (!runs.length) return "";
   const max = Math.max(...runs.map(x => x.r.scoredMs!), 1000);
   const point = (i: number, ms: number) => `${30 + i * 320 / Math.max(1,runs.length-1)},${125 - ms / max * 100}`;
-  return `<div class="chart run-trend"><div class="chart-title"><h2>Sequence speed over time</h2><span>Last ${runs.length} completed runs</span></div><p class="muted compact">Lower is faster. Blue: raw time · light blue: scored time.${sequenceReportFormat === "all" ? " Filter by format to compare similar runs." : ""}</p><svg viewBox="0 0 380 160" role="img" aria-label="Raw and penalty-adjusted completion times; exact times and accuracy appear below"><line x1="30" x2="350" y1="125" y2="125" stroke="#2c3e5a"/><polyline points="${runs.map((x,i)=>point(i,x.r.elapsedMs!)).join(" ")}" fill="none" stroke="#3979cb" stroke-width="2"/><polyline points="${runs.map((x,i)=>point(i,x.r.scoredMs!)).join(" ")}" fill="none" stroke="#b3d3ff" stroke-width="2"/>${runs.map((x,i)=>`<circle cx="${point(i,x.r.scoredMs!).split(",")[0]}" cy="${point(i,x.r.scoredMs!).split(",")[1]}" r="3" fill="#b3d3ff"><title>${fmtDate(x.s.startedAt)} · ${formatName(formatOf(x.s))}: ${runTime(x.r.scoredMs)} scored, ${x.r.accuracy.toFixed(0)}% accuracy</title></circle>`).join("")}<text x="30" y="150" font-size="10" fill="#9aabc6">${fmtDate(runs[0].s.startedAt)}</text><text x="310" y="150" font-size="10" fill="#9aabc6">Latest</text></svg><div class="table-wrap"><table><thead><tr><th>Run</th><th>Raw</th><th>Scored</th><th>Accuracy</th></tr></thead><tbody>${[...runs].reverse().map(({s,r})=>`<tr><td>${fmtDate(s.startedAt)}<br/><small>${s.mode === "sequence-forward" ? "Forward" : "Backward"} · ${formatName(formatOf(s))}</small></td><td>${runTime(r.elapsedMs)}</td><td>${runTime(r.scoredMs)}</td><td>${r.accuracy.toFixed(0)}%</td></tr>`).join("")}</tbody></table></div></div>`;
+  return `<div class="chart run-trend"><div class="trend-legend"><span>Raw time</span><span>Scored time</span><span>${runs.length} runs</span></div><svg viewBox="0 0 380 160" role="img" aria-label="Raw and penalty-adjusted completion times; exact times and accuracy appear below"><line x1="30" x2="350" y1="125" y2="125" stroke="#2c3e5a"/><polyline points="${runs.map((x,i)=>point(i,x.r.elapsedMs!)).join(" ")}" fill="none" stroke="#3979cb" stroke-width="2"/><polyline points="${runs.map((x,i)=>point(i,x.r.scoredMs!)).join(" ")}" fill="none" stroke="#b3d3ff" stroke-width="2"/>${runs.map((x,i)=>`<circle cx="${point(i,x.r.scoredMs!).split(",")[0]}" cy="${point(i,x.r.scoredMs!).split(",")[1]}" r="3" fill="#b3d3ff"><title>${fmtDate(x.s.startedAt)} · ${formatName(formatOf(x.s))}: ${runTime(x.r.scoredMs)} scored, ${x.r.accuracy.toFixed(0)}% accuracy</title></circle>`).join("")}<text x="30" y="150" font-size="10" fill="#9aabc6">${fmtDate(runs[0].s.startedAt)}</text><text x="310" y="150" font-size="10" fill="#9aabc6">Latest</text></svg><div class="table-wrap"><table><thead><tr><th>Run</th><th>Raw</th><th>Scored</th><th>Accuracy</th></tr></thead><tbody>${[...runs].reverse().map(({s,r})=>`<tr><td>${fmtDate(s.startedAt)}<br/><small>${s.mode === "sequence-forward" ? "Forward" : "Backward"} · ${formatName(formatOf(s))}</small></td><td>${runTime(r.elapsedMs)}</td><td>${runTime(r.scoredMs)}</td><td>${r.accuracy.toFixed(0)}%</td></tr>`).join("")}</tbody></table></div></div>`;
 }
 function directionInsights() {
   const evidence = data.attempts.filter(a => !isSequence(a.direction) && (period === "all" || a.at >= Date.now()-Number(period)*86400000) && (reportFormat === "all" || formatOf(a) === reportFormat));
@@ -589,21 +598,45 @@ function directionInsights() {
   const subset = cues.recentMisses >= 5 ? `${cues.concentratedMappings} mappings account for ${cues.coveredMisses} of ${cues.recentMisses} recent first-answer misses.` :
     cues.slowMappings ? `${cues.slowMappings} mappings are usually correct but still above your ${data.settings.speedTarget}s target.` :
     cues.variableMappings ? `${cues.variableMappings} mappings have variable recall times.` : "";
-  return `<section class="report-section direction-comparison"><div class="chart-title"><h2>Compare directions</h2><span>Recent 100 eligible answers each</span></div><div class="summary-grid direction-cards">${(["card-number","number-card"] as const).map(dir => {
+  return `<section class="report-section direction-comparison"><div class="summary-grid direction-cards">${(["card-number","number-card"] as const).map(dir => {
     const s = dir === "card-number" ? comparison.card : comparison.number;
-    return `<div class="direction-card ${comparison.focus === dir ? "focus-direction" : ""}"><h3>${modeName(dir)}</h3><strong>${s.eligibleTotal ? s.accuracy.toFixed(0)+"%" : "—"}</strong><span>Independent accuracy</span><div class="direction-speed">${fmtTime(s.medianMs)}</div><span>Median correct time (sec)</span><p class="muted compact">${s.eligibleTotal} eligible answers</p><button class="secondary" data-practice-direction="${dir}">Practice</button></div>`;
-  }).join("")}</div><div class="practice-focus"><strong>Practice focus</strong><p>${note}</p>${subset ? `<p>${subset}${comparison.focus ? ` (${modeName(comparison.focus)})` : ""}</p>` : ""}${comparison.reason !== "insufficient" ? `<small>Based on ${comparison.commonCards} shared cards. Accuracy is prioritized; these are practice cues, not a statistical significance test.</small>` : ""}</div></section>`;
+    return `<div class="direction-card ${comparison.focus === dir ? "focus-direction" : ""}"><h3>${modeName(dir)}</h3><strong>${s.eligibleTotal ? s.accuracy.toFixed(0)+"%" : "—"}</strong><span>Independent accuracy</span><div class="direction-speed">${fmtTime(s.medianMs)}</div><span>Median recall</span><p class="muted compact">${s.eligibleTotal} eligible answers</p><button class="secondary" data-practice-direction="${dir}">Practice</button></div>`;
+  }).join("")}</div>${comparison.reason!=="insufficient"?`<div class="practice-focus"><p>${note}</p>${subset?`<p>${subset}</p>`:""}</div>`:""}</section>`;
 }
-function perCardResults(attempts: Attempt[]) {
-  const sequence = filter.startsWith("sequence");
-  const rows = sequence ? STACK.map((_,i) => ({position:i+1, stats:summary(attempts.filter(a => a.position === i+1)), weakest:null})) :
-    cardRanking(attempts,filter as "all" | "card-number" | "number-card",data.settings.speedTarget,cardSort);
-  return `<section class="report-section"><div class="chart-title"><h2>Per-card results</h2><span>Tap a card for details</span></div>${sequence ? "" : `<label class="card-sort" for="card-sort">Sort by<select id="card-sort">${([["position","Position"],["mastery","Weakest recall"],["speed","Slowest recent recall"],["accuracy","Lowest recent accuracy"],["misses","Latest first miss"]] as const).map(([id,label]) => `<option value="${id}" ${cardSort === id ? "selected" : ""}>${label}</option>`).join("")}</select></label>`}<p class="muted compact">${sequence ? "Forward and backward sequence results." : "Recall labels and sorting use the last 12 eligible answers per direction in this period. Tap for lifetime comparison. Practice uses full history."}${filter === "all" ? " Mixed shows the weakest tested direction; each skill stays separate." : ""} Timing excludes interruptions, recent exposure, and times over two minutes.</p><div class="table-wrap"><table class="deck-table"><thead><tr><th>Position / card</th><th>Answers</th><th>Accuracy</th><th>Median</th></tr></thead><tbody>${rows.map(({position,stats:ss,weakest:m}) => `<tr><td><button class="card-detail" data-position="${position}"><span class="position-number">${position}</span><span>${cardName(position)}${m ? `<small class="recall-label" title="Recall score ${m.score.toFixed(0)}/100">${m.category}${filter === "all" ? m.direction === "card-number" ? " · C → #" : " · # → C" : ""}${m.consistency === "Variable" ? " · variable" : ""}</small>` : ""}</span></button></td><td>${ss.total || "—"}${!sequence && ss.total ? `<small class="sample-count">${ss.timedCount} timed</small>` : ""}</td><td><span class="accuracy ${ss.eligibleTotal && ss.accuracy < 75 ? "low" : ""}">${ss.eligibleTotal ? ss.accuracy.toFixed(0) + "%" : "—"}</span></td><td>${fmtTime(ss.medianMs)}</td></tr>`).join("")}</tbody></table></div></section>`;
+function weakestSet() {
+ const directions:Direction[]=filter==="sequence"?["sequence-forward","sequence-backward"]:filter==="all"?["card-number","number-card"]:[filter as Direction];
+ let format:AnswerFormat=reportAnswerFormat()==="all"?(filter.startsWith("sequence")?data.settings.sequenceAnswerFormat??"multiple-choice":formatOf(data.settings)):reportAnswerFormat() as AnswerFormat;
+ const evidence=filtered();let mappings=weakestMappings(evidence,directions,format,data.settings.speedTarget);
+ if(!mappings.length&&reportAnswerFormat()==="all"){format=format==="direct-recall"?"multiple-choice":"direct-recall";mappings=weakestMappings(evidence,directions,format,data.settings.speedTarget);}
+ return {format,mappings};
+}
+function needsWork() {
+ const {format,mappings}=weakestSet();if(!mappings.length)return "";
+ return `<section class="weakest-panel" aria-label="Needs work"><div class="weakest-list">${mappings.map(m=>`<button data-position="${m.position}" class="weakest-row"><span><strong>${m.direction==="card-number"?cardName(m.position):"Position "+m.position}</strong><small>${modeName(m.direction)}</small></span><span><strong>${m.model.category}</strong><small>${fmtTime(m.model.recent.medianMs)}</small></span></button>`).join("")}</div><button class="primary" data-action="drill-weakest" ${storageProblem?"disabled":""}>Drill weakest ${mappings.length}</button>${reportAnswerFormat()==="all"?`<span class="quiet-count">${formatName(format)}</span>`:""}</section>`;
+}
+function startFocus() {
+ const {format,mappings}=weakestSet();if(!mappings.length)return;
+ const focus=mappings.map(({position,direction})=>({position,direction}));
+ practiceType=isSequence(focus[0].direction)?"sequence":"position";
+ const mode:Mode=practiceType==="sequence"?focus[0].direction:new Set(focus.map(m=>m.direction)).size>1?"mixed":focus[0].direction;
+ if(practiceType==="sequence")data.settings.sequenceAnswerFormat=format;else data.settings.answerFormat=format;
+ start(mode,1,focus,format);
+}
+function sessionDirectionName(s:Session) {
+ return s.focus&&new Set(s.focus.mappings.map(m=>m.direction)).size>1?(isSequence(s.mode)?"Both sequence directions":"Mixed directions"):modeName(s.mode);
+}
+function sessionLabel(s:Session,count:number) {
+ return s.focus?`Drill ${s.focus.mappings.length} · ${count}/${s.focus.target}`:s.runTarget?`${count}/52`:`${s.duration/60000} min · ${count} answered`;
+}
+function perCardResults(attempts:Attempt[]) {
+ const sequence=filter.startsWith("sequence");
+ const rows=sequence?STACK.map((_,i)=>({position:i+1,stats:summary(attempts.filter(a=>a.position===i+1)),weakest:null})):cardRanking(attempts,filter as "all"|"card-number"|"number-card",data.settings.speedTarget,cardSort);
+ return `<details id="all-cards" data-disclosure="cards" class="report-section" ${cardsExpanded?"open":""}><summary>All 52 cards</summary>${sequence?"":`<select id="card-sort" class="card-sort-select" aria-label="Card order">${([["position","Position"],["mastery","Weakest recall"],["speed","Slowest recent recall"],["accuracy","Lowest recent accuracy"],["misses","Latest first miss"]] as const).map(([id,label])=>`<option value="${id}" ${cardSort===id?"selected":""}>${label}</option>`).join("")}</select>`}<div class="table-wrap"><table class="deck-table"><thead><tr><th>Position / card</th><th>Answers</th><th>Accuracy</th><th>Median</th></tr></thead><tbody>${rows.map(({position,stats:ss,weakest:m})=>`<tr><td><button class="card-detail" data-position="${position}"><span class="position-number">${position}</span><span>${cardName(position)}${m?`<small class="recall-label" title="Recall score ${m.score.toFixed(0)}/100">${m.category}${filter==="all"?m.direction==="card-number"?" · C → #":" · # → C":""}${m.consistency==="Variable"?" · variable":""}</small>`:""}</span></button></td><td>${ss.total||"—"}${!sequence&&ss.total?`<small class="sample-count">${ss.timedCount} timed</small>`:""}</td><td><span class="accuracy ${ss.eligibleTotal&&ss.accuracy<75?"low":""}">${ss.eligibleTotal?ss.accuracy.toFixed(0)+"%":"—"}</span></td><td>${fmtTime(ss.medianMs)}</td></tr>`).join("")}</tbody></table></div></details>`;
 }
 function emptyResults() {
   const sequence = filter.startsWith("sequence");
-  const action = sequence ? 'data-action="sequence-setup"' : 'data-view="practice"';
-  return `<div class="empty"><h2>No results in this view</h2><p>Complete a session to start tracking your progress.</p><button class="primary" ${action}>${sequence ? "Go to sequence quiz" : "Go to practice"}</button></div>`;
+  const action = sequence ? 'data-action="sequence-setup"' : 'data-action="position-setup"';
+  return `<div class="empty"><h2>No results in this view</h2><button class="primary" ${action}>${sequence ? "Go to sequence quiz" : "Go to practice"}</button></div>`;
 }
 
 function progress() {
@@ -615,10 +648,10 @@ function progress() {
     ).length;
   const sessions = [...data.sessions]
     .reverse()
-    .filter(session => (filter === "all" ? !isSequence(session.mode) : filter === "sequence" ? isSequence(session.mode) : session.mode === filter || (!isSequence(filter) && session.mode === "mixed")) &&
+    .filter(session => (filter === "all" ? !isSequence(session.mode) : filter === "sequence" ? isSequence(session.mode) : session.mode === filter || session.focus?.mappings.some(m=>m.direction===filter) || (!isSequence(filter) && session.mode === "mixed")) &&
       (period === "all" || session.startedAt >= Date.now() - Number(period) * 86400000) && (reportAnswerFormat() === "all" || formatOf(session) === reportAnswerFormat()));
   chrome(
-    `<section class="page-heading"><h1>Progress</h1></section><section class="progress-controls" aria-label="Progress filters"><div class="segmented quiz-type-toggle" role="group" aria-label="Quiz type">${[["sequence","Sequence quiz"],["position","Position practice"]].map(([id,label]) => `<button data-stats-type="${id}" aria-pressed="${(filter.startsWith("sequence") ? "sequence" : "position") === id}" class="${(filter.startsWith("sequence") ? "sequence" : "position") === id ? "selected" : ""}">${label}</button>`).join("")}</div><div class="segmented practice-toggle position-directions" role="group" aria-label="${filter.startsWith("sequence") ? "Sequence direction" : "Practice type"}">${(filter.startsWith("sequence") ? [["sequence-forward","Forward"],["sequence-backward","Backward"],["sequence","Combined"]] : [["card-number","Card → number"],["number-card","Number → card"],["all","Mixed"]]).map(([id,label]) => `<button data-stats-direction="${id}" aria-pressed="${filter === id}" class="${filter === id ? "selected" : ""}">${label}</button>`).join("")}</div>${formatToggle(reportAnswerFormat(),"report")}<div class="segmented stats-period-toggle" role="group" aria-label="Statistics period">${[["7","7 days"],["30","30 days"],["all","All time"]].map(([id,label]) => `<button data-stats-period="${id}" aria-pressed="${period === id}" class="${period === id ? "selected" : ""}">${label}</button>`).join("")}</div></section><div class="summary-grid stat-cards"><div><strong>${s.eligibleTotal ? s.accuracy.toFixed(0) + "%" : "—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median correct time (sec)</span></div><div><strong>${s.total}</strong><span>Questions answered</span></div><div><strong>${slow.length ? Math.round((within / slow.length) * 100) + "%" : "—"}</strong><span>Within ${data.settings.speedTarget}s target</span></div></div>${!s.total ? emptyResults() : `${filter.startsWith("sequence") ? sequenceTrend() : trend(attempts)}<div class="report-notes"><span>${s.wrong} first-answer misses</span><span>${s.hints} questions with hints</span><span>${new Set(attempts.map((a) => a.position)).size}/52 cards practiced</span></div>`}${filter.startsWith("sequence") ? sequenceBests() : directionInsights()}${perCardResults(attempts)}<section class="report-section"><h2>Session history</h2>${
+    `<section class="progress-controls" aria-label="Progress filters"><div class="segmented quiz-type-toggle" role="group" aria-label="Quiz type">${[["sequence","Sequence quiz"],["position","Position practice"]].map(([id,label]) => `<button data-stats-type="${id}" aria-pressed="${(filter.startsWith("sequence") ? "sequence" : "position") === id}" class="${(filter.startsWith("sequence") ? "sequence" : "position") === id ? "selected" : ""}">${label}</button>`).join("")}</div><div class="segmented practice-toggle position-directions" role="group" aria-label="${filter.startsWith("sequence") ? "Sequence direction" : "Practice type"}">${(filter.startsWith("sequence") ? [["sequence-forward","Forward"],["sequence-backward","Backward"],["sequence","Combined"]] : [["card-number","Card → number"],["number-card","Number → card"],["all","Mixed"]]).map(([id,label]) => `<button data-stats-direction="${id}" aria-pressed="${filter === id}" class="${filter === id ? "selected" : ""}">${label}</button>`).join("")}</div>${formatToggle(reportAnswerFormat(),"report")}<div class="segmented stats-period-toggle" role="group" aria-label="Statistics period">${[["7","7 days"],["30","30 days"],["all","All time"]].map(([id,label]) => `<button data-stats-period="${id}" aria-pressed="${period === id}" class="${period === id ? "selected" : ""}">${label}</button>`).join("")}</div></section><div class="summary-grid stat-cards"><div><strong>${s.eligibleTotal ? s.accuracy.toFixed(0) + "%" : "—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median recall</span></div><div><strong>${s.total}</strong><span>Questions answered</span></div><div><strong>${slow.length ? Math.round((within / slow.length) * 100) + "%" : "—"}</strong><span>Within ${data.settings.speedTarget}s target</span></div></div>${needsWork()}${!s.total ? emptyResults() : `${filter.startsWith("sequence") ? sequenceTrend() : trend(attempts)}<div class="report-notes"><span>${s.wrong} first-answer misses</span><span>${s.hints} questions with hints</span><span>${new Set(attempts.map((a) => a.position)).size}/52 cards practiced</span></div>`}${filter.startsWith("sequence") ? sequenceBests() : directionInsights()}${perCardResults(attempts)}<details id="session-history" data-disclosure="history" class="report-section" ${historyExpanded?"open":""}><summary>Sessions (${sessions.length})</summary>${
       sessions.length
         ? `<div class="history-list">${sessions
             .slice(0, historyLimit)
@@ -626,19 +659,19 @@ function progress() {
               const sessionAttempts = attempts.filter((a) => a.sessionId === session.id);
               const ss = summary(sessionAttempts);
               const run = session.runTarget ? sequenceResult(session, data.attempts) : null;
-              return `<div class="history-entry"><button class="history-row" data-session="${esc(session.id)}"><div><strong>${fmtDate(session.startedAt)} · ${new Date(session.startedAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}</strong><span>${!isSequence(filter) && filter !== "all" ? modeName(filter as Direction) : modeName(session.mode)} · ${run ? `${run.total}/52 · ${run.complete ? "complete" : "partial"} · ${formatName(formatOf(session))}` : `${session.duration / 60000} min · ${ss.total} answered · ${formatName(formatOf(session))}`}</span></div><div><strong>${run ? run.accuracy.toFixed(0) + "%" : ss.eligibleTotal ? ss.accuracy.toFixed(0) + "%" : "—"}</strong><span>${run ? runTime(run.scoredMs) : fmtTime(ss.medianMs)}</span></div></button><button class="delete-session" data-delete-session="${esc(session.id)}" aria-label="Delete session from ${esc(fmtDate(session.startedAt))}">${uiIcon("trash")}</button></div>`;
+              return `<div class="history-entry"><button class="history-row" data-session="${esc(session.id)}"><div><strong>${fmtDate(session.startedAt)} · ${new Date(session.startedAt).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}</strong><span>${!isSequence(filter) && filter !== "all" ? modeName(filter as Direction) : sessionDirectionName(session)} · ${run ? `${run.total}/52 · ${run.complete ? "complete" : "partial"} · ${formatName(formatOf(session))}` : `${sessionLabel(session,data.attempts.filter(a=>a.sessionId===session.id).length)} · ${formatName(formatOf(session))}`}</span></div><div><strong>${run ? run.accuracy.toFixed(0) + "%" : ss.eligibleTotal ? ss.accuracy.toFixed(0) + "%" : "—"}</strong><span>${run ? runTime(run.scoredMs) : fmtTime(ss.medianMs)}</span></div></button><button class="delete-session" data-delete-session="${esc(session.id)}" aria-label="Delete session from ${esc(fmtDate(session.startedAt))}">${uiIcon("trash")}</button></div>`;
             })
             .join(
               "",
             )}</div>${sessions.length > historyLimit ? '<button class="text-button" data-action="more-history">Show more sessions</button>' : ""}`
         : '<p class="muted">No sessions in this period.</p>'
-    }</section>${recentlyDeleted()}<div class="export-row"><button class="text-button" data-action="export">↓ Export backup</button><button class="text-button" data-action="csv">↓ Export results CSV</button></div><p class="footnote">Independent accuracy excludes recent exposure; hints and reveals count as failures. Timing also excludes interruptions. ${reportAnswerFormat() === "all" ? "Choose one answer format for comparable timing." : reportAnswerFormat() === "direct-recall" ? "Direct recall timing includes entering your answer." : "Multiple choice measures recognition; fast guesses can still be correct."}</p>`,
+    }</details>${recentlyDeleted()}<div class="export-row"><button class="text-button" data-action="export">↓ Export backup</button><button class="text-button" data-action="csv">↓ Export results CSV</button></div><details class="report-section scoring-notes"><summary>Scoring notes</summary><p class="footnote">Independent accuracy excludes recent exposure; hints and reveals count as failures. Timing also excludes interruptions. ${reportAnswerFormat() === "all" ? "Choose one answer format for comparable timing." : reportAnswerFormat() === "direct-recall" ? "Direct recall timing includes entering your answer." : "Multiple choice measures recognition; fast guesses can still be correct."}</p></details>`,
   );
 }
 function recentlyDeleted() {
   const deleted = [...(data.deletedSessions ?? [])].sort((a,b) => b.deletedAt-a.deletedAt);
   if (!deleted.length) return "";
-  return `<details class="report-section deleted-history" open><summary>Recently deleted (${deleted.length})</summary><p class="muted compact">Excluded from all statistics. Restore a session to include it again.</p>${deleted.map(({session, attempts}) => `<div class="history-entry"><div class="deleted-session-info"><strong>${fmtDate(session.startedAt)} · ${new Date(session.startedAt).toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"})}</strong><span>${modeName(session.mode)} · ${formatName(formatOf(session))} · ${session.runTarget ? attempts.length + "/52" : session.duration / 60000 + " min · " + attempts.length + " answered"}</span></div><button class="secondary restore-session" data-restore-session="${esc(session.id)}">Restore</button></div>`).join("")}</details>`;
+  return `<details class="report-section deleted-history" open><summary>Recently deleted (${deleted.length})</summary>${deleted.map(({session, attempts}) => `<div class="history-entry"><div class="deleted-session-info"><strong>${fmtDate(session.startedAt)} · ${new Date(session.startedAt).toLocaleTimeString(undefined,{hour:"numeric",minute:"2-digit"})}</strong><span>${sessionDirectionName(session)} · ${formatName(formatOf(session))} · ${sessionLabel(session,attempts.length)}</span></div><button class="secondary restore-session" data-restore-session="${esc(session.id)}">Restore</button></div>`).join("")}</details>`;
 }
 function confirmRestoreSession(id: string) {
   if (active || storageConflict || storageProblem) return;
@@ -706,7 +739,7 @@ function attemptList(attempts: Attempt[]) {
 }
 function settings() {
   chrome(
-    `<section class="page-heading"><h1>Settings</h1></section><section class="settings-panel"><label>Session length<select id="minutes">${[1, 3, 5, 10].map((n) => `<option value="${n}" ${data.settings.minutes === n ? "selected" : ""}>${n} minutes</option>`).join("")}</select></label><label>Speed target<select id="speed">${[2, 3, 5, 8, 10].map((n) => `<option value="${n}" ${data.settings.speedTarget === n ? "selected" : ""}>${n} seconds</option>`).join("")}</select></label><label class="toggle-row"><span>Use speed to adapt practice<small>Slower correct associations get extra practice.</small></span><input id="adaptive-speed" type="checkbox" ${data.settings.speedAdaptive ? "checked" : ""}/></label><p class="muted">Accuracy drives your review schedule. Each direction uses recent accuracy, median speed, consistency, and review age. Your speed target sets the recall standard.</p></section><section class="settings-panel"><h2>Data</h2><p>Saved in this browser on this device. No account, tracking, or cloud sync. Clearing browser data removes your history.</p><button class="primary" data-action="export">Export a backup ↓</button><label class="file-label">Restore from a backup<input type="file" id="import" accept="application/json,.json"/></label><p class="muted">Restore replaces this device’s progress after confirmation.</p></section><section class="settings-panel"><h2>Install Deckwise</h2><p>Install for standalone and offline use.</p><button class="primary" data-action="install">${installPrompt ? "Install app ↗" : "How to install ↗"}</button><p id="offline-status" class="muted">${navigator.onLine ? "Online" : "Offline"} · ${navigator.serviceWorker?.controller ? "Offline app ready" : "Offline setup available on the published site"}</p></section><section class="settings-panel"><h2>Reset</h2><button class="text-button danger" data-action="reset">Reset all progress</button></section><p class="footnote">Independent practice companion for Juan Tamariz’s Mnemonica. Deckwise v0.3 · <a href="https://www.me.uk/cards/" target="_blank" rel="noopener">Card artwork: Adrian Kennard (CC0)</a>.</p>`,
+    `<section class="settings-panel"><label>Session length<select id="minutes">${[1, 3, 5, 10].map((n) => `<option value="${n}" ${data.settings.minutes === n ? "selected" : ""}>${n} minutes</option>`).join("")}</select></label><label>Speed target<select id="speed">${[2, 3, 5, 8, 10].map((n) => `<option value="${n}" ${data.settings.speedTarget === n ? "selected" : ""}>${n} seconds</option>`).join("")}</select></label><label class="toggle-row"><span>Adapt to recall speed</span><input id="adaptive-speed" type="checkbox" ${data.settings.speedAdaptive ? "checked" : ""}/></label></section><section class="settings-panel"><button class="primary" data-action="export">Export a backup ↓</button><label class="file-label">Restore from a backup<input type="file" id="import" accept="application/json,.json"/></label></section><section class="settings-panel"><button class="primary" data-action="install">${installPrompt ? "Install app ↗" : "How to install ↗"}</button><p id="offline-status" class="muted">${navigator.onLine ? "Online" : "Offline"} · ${navigator.serviceWorker?.controller ? "Offline app ready" : "Offline setup available on the published site"}</p></section><section class="settings-panel"><button class="text-button danger" data-action="reset">Reset all progress</button></section><p class="footnote">Independent practice companion for Juan Tamariz’s Mnemonica. Deckwise v0.3 · <a href="https://www.me.uk/cards/" target="_blank" rel="noopener">Card artwork: Adrian Kennard (CC0)</a>.</p>`,
   );
 }
 function download(name: string, content: string, type: string) {
@@ -750,6 +783,7 @@ function csv() {
     "answerFormat",
     "finalResult",
     "finalElapsedMs",
+    "practiceKind",
   ];
   download(
     "deckwise-results.csv",
@@ -772,6 +806,7 @@ function csv() {
           formatOf(a),
           a.finalResult ?? "",
           a.finalElapsedMs ?? "",
+          data.sessions.find(s=>s.id===a.sessionId)?.focus?"focused-drill":isSequence(a.direction)?"sequence":"position",
         ]
           .map((v) => `"${String(v).replace(/"/g, '""')}"`)
           .join(","),
@@ -823,7 +858,12 @@ function bind(root: ParentNode = app) {
   root.querySelectorAll<HTMLElement>("[data-stats-period]").forEach(b => b.onclick = () => setStatsPeriod(b.dataset.statsPeriod as typeof period));
   root.querySelectorAll<HTMLElement>("[data-stats-type]").forEach(b => b.onclick = () => {filter = b.dataset.statsType === "sequence" ? sequenceFilter : positionFilter; render();});
   root.querySelectorAll<HTMLElement>("[data-stats-direction]").forEach(b => b.onclick = () => {filter = b.dataset.statsDirection!; render();});
-  root.querySelectorAll<HTMLElement>("[data-practice-direction]").forEach(b => b.onclick = () => {data.settings.mode = b.dataset.practiceDirection as Mode; if (reportFormat !== "all") data.settings.answerFormat = reportFormat; save(); route("practice");});
+  root.querySelectorAll<HTMLElement>("[data-practice-type]").forEach(b=>b.onclick=()=>{practiceType=b.dataset.practiceType as typeof practiceType;render();});
+  root.querySelectorAll<HTMLElement>("[data-minutes]").forEach(b=>b.onclick=()=>{data.settings.minutes=Number(b.dataset.minutes);save();render();});
+  root.querySelectorAll<HTMLElement>("[data-sequence-start]").forEach(b=>b.onclick=()=>{sequenceStart=b.dataset.sequenceStart as typeof sequenceStart;saveUi();render();});
+  root.querySelectorAll<HTMLElement>("[data-browse-position]").forEach(b=>b.onclick=()=>{deckIndex=Number(b.dataset.browsePosition)-1;deckMode="browse";window.scrollTo(0,0);render();});
+  root.querySelectorAll<HTMLDetailsElement>("[data-disclosure]").forEach(d=>d.addEventListener("toggle",()=>{if(!d.isConnected)return;if(d.dataset.disclosure==="cards")cardsExpanded=d.open;else historyExpanded=d.open;saveUi();}));
+  root.querySelectorAll<HTMLElement>("[data-practice-direction]").forEach(b => b.onclick = () => {practiceType="position";data.settings.mode = b.dataset.practiceDirection as Mode; if (reportFormat !== "all") data.settings.answerFormat = reportFormat; save(); route("practice");});
   root.querySelectorAll<HTMLElement>("[data-restore-session]").forEach(b => b.onclick = () => confirmRestoreSession(b.dataset.restoreSession!));
   root.querySelectorAll<HTMLElement>("[data-deck-mode]").forEach(b => b.onclick = () => {deckMode = b.dataset.deckMode as typeof deckMode; render();});
   root.querySelectorAll<HTMLElement>("[data-sequence-direction]").forEach(b => b.onclick = () => {sequenceDirection = b.dataset.sequenceDirection as SequenceDirection; render();});
@@ -855,7 +895,7 @@ function bind(root: ParentNode = app) {
         const session = data.sessions.find((s) => s.id === b.dataset.session)!;
         const detailAttempts = isSequence(session.mode) ? data.attempts : filtered();
         showDialog(
-          `<div class="eyebrow">${fmtDate(session.startedAt)}</div>${session.runTarget ? runResults(session) : `<h2>${filter === "all" ? modeName(session.mode) : modeName(filter as Direction)}</h2><p>${session.duration / 60000}-minute session · ${formatName(formatOf(session))}</p>`}${attemptList(detailAttempts.filter((a) => a.sessionId === session.id).reverse())}<button class="text-button danger" data-delete-session="${esc(session.id)}">Delete session</button>`,
+          `<div class="eyebrow">${fmtDate(session.startedAt)}</div>${session.runTarget ? runResults(session) : `<h2>${filter === "all"||filter==="sequence" ? sessionDirectionName(session) : modeName(filter as Direction)}</h2><p>${session.focus?sessionLabel(session,data.attempts.filter(a=>a.sessionId===session.id).length):session.duration / 60000+"-minute session"} · ${formatName(formatOf(session))}</p>`}${attemptList(detailAttempts.filter((a) => a.sessionId === session.id).reverse())}<button class="text-button danger" data-delete-session="${esc(session.id)}">Delete session</button>`,
         );
       }),
   );
@@ -880,7 +920,11 @@ function bind(root: ParentNode = app) {
             route("settings");
             break;
           case "sequence-setup":
-            deckMode = "quiz"; route("deck"); break;
+            practiceType="sequence";route("practice");break;
+          case "position-setup":
+            practiceType="position";route("practice");break;
+          case "drill-weakest":
+            startFocus();break;
           case "start-sequence":
             startSequence();
             break;
@@ -896,6 +940,7 @@ function bind(root: ParentNode = app) {
             tick();
             paused = !resume;
             if (active?.runTarget) {active.elapsedMs = sessionElapsed; save();}
+            if(active?.focus){active.focus.elapsedMs=sessionElapsed;save();}
             if (q && q.firstCorrect === null) q.interrupted = true;
             lastTick = performance.now();
             render();

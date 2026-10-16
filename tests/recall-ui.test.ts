@@ -29,21 +29,23 @@ function appHarness(seed?: Data, persisted: HarnessStorage = {}) {
           const old=oldButtons.get(JSON.stringify(attrs));
           return {attrs,dataset,disabled:/(?:^|\s)disabled(?:\s|$)/.test(match[1]),onclick:old?.onclick??null,focus(){},addEventListener(){}};
         });
-        fields=Array.from(value.matchAll(/<(?:select|input|span)\b([^>]*)>/g),match=>{
+        fields=Array.from(value.matchAll(/<(?:select|input|span|details)\b([^>]*)>/g),match=>{
           const id=match[1].match(/id="([^"]*)"/)?.[1];
           const events=new Map<string,Function>();
-          return {id,events,value:match[1].match(/value="([^"]*)"/)?.[1],textContent:"",addEventListener(name:string,fn:Function){events.set(name,fn);}};
+          const attrs=Object.fromEntries(Array.from(match[1].matchAll(/([\w-]+)="([^"]*)"/g),m=>[m[1],m[2]]));
+          const dataset=Object.fromEntries(Object.entries(attrs).filter(([k])=>k.startsWith("data-")).map(([k,v])=>[k.slice(5),v]));
+          return {id,events,attrs,dataset,isConnected:true,open:/(?:^|\s)open(?:\s|$)/.test(match[1]),value:match[1].match(/value="([^"]*)"/)?.[1],textContent:"",addEventListener(name:string,fn:Function){events.set(name,fn);}};
         });
         const events=new Map<string,Function>();
-        gallery={clientWidth:320,scrollLeft:0,isConnected:true,addEventListener(name:string,fn:Function){events.set(name,fn);},scrollTo(opts:any){this.scrollLeft=opts.left;events.get("scroll")?.();}};
+        gallery={clientWidth:320,querySelector(){return {offsetWidth:320};},scrollLeft:0,isConnected:true,addEventListener(name:string,fn:Function){events.set(name,fn);},scrollTo(opts:any){this.scrollLeft=opts.left;events.get("scroll")?.();}};
       },
       querySelectorAll(selector:string){
         const name=selector.match(/^\[([\w-]+)\]$/)?.[1];
-        return name ? buttons.filter(b=>Object.hasOwn(b.attrs,name)) : [];
+        return name ? [...buttons,...fields].filter(b=>Object.hasOwn(b.attrs,name)) : [];
       },
       querySelector(selector:string){
         if(selector===".dialog-close")return {addEventListener(){}};
-        if(selector===".gallery" && html.includes('class="gallery"'))return gallery;
+        if(selector===".gallery" && html.includes('class="gallery'))return gallery;
         if(selector.startsWith("#"))return fields.find(f=>f.id===selector.slice(1))??null;
         if(selector===".recall-controls" && html.includes('class="recall-controls"')) {
           const pattern=/(<section class="recall-controls"[^>]*>)([\s\S]*?)(<\/section>)/;
@@ -103,11 +105,11 @@ function appHarness(seed?: Data, persisted: HarnessStorage = {}) {
   const state=()=> (context as any).__app;
   const click=(attr:string,value:string)=>(dialog??app).click(attr,value);
   const begin=(mode="card-number",format="direct-recall")=>{
-    click("data-view","practice");click("data-practice-format",format);click("data-mode",mode);click("data-action","start");
+    click("data-view","practice");click("data-practice-type","position");click("data-practice-format",format);click("data-mode",mode);click("data-action","start");
   };
-  const choose=(id:string,value:string)=>{const field=app.querySelector("#"+id);assert.ok(field?.events.get("change"));field.events.get("change")({target:{value}});};
+  const choose=(id:string,value:string)=>{if(id==="sequence-start")return click("data-sequence-start",value);if(id==="minutes"&&app.querySelector('[data-minutes="'+value+'"]'))return click("data-minutes",value);const field=app.querySelector("#"+id);assert.ok(field?.events.get("change"));field.events.get("change")({target:{value}});};
   const beginSequence=(direction="sequence-forward",format="direct-recall",random=false)=>{
-    click("data-view","deck");click("data-sequence-format",format);click("data-sequence-direction",direction);
+    click("data-view","practice");click("data-practice-type","sequence");click("data-sequence-format",format);click("data-sequence-direction",direction);
     if(random)choose("sequence-start","random");click("data-action","start-sequence");
   };
   const cardAnswer=()=>{const [rank,suit]=STACK[state().q.position-1];click("data-rank",rank);click("data-suit",suit);};
@@ -116,7 +118,7 @@ function appHarness(seed?: Data, persisted: HarnessStorage = {}) {
     for(const fn of listeners.get("keydown")??[])fn({key:value,target:{tagName:"BODY"},preventDefault(){prevented=true;},ctrlKey:false,metaKey:false,altKey:false});
     return prevented;
   };
-  return {app,begin,beginSequence,cardAnswer,click,key,state,choose,writes:()=>({full:fullWrites,panel:panelWrites}),advance:(ms:number)=>{elapsed+=ms;},document,
+  return {app,begin,beginSequence,cardAnswer,click,key,state,choose,toggle:(id:string,open:boolean)=>{const d=app.querySelector("#"+id);assert.ok(d?.events.get("toggle"));d.open=open;d.events.get("toggle")();},writes:()=>({full:fullWrites,panel:panelWrites}),advance:(ms:number)=>{elapsed+=ms;},document,
     visibility:(hidden:boolean)=>{document.hidden=hidden;for(const fn of listeners.get("visibilitychange")??[])fn();},
     reload:(delay=0)=>{for(const fn of windowListeners.get("pagehide")??[])fn();return appHarness(undefined,{local:stored,tab:tabStored,wallAt:wallAt+elapsed+delay,denyUi:persisted.denyUi});},
     reopen:()=>appHarness(undefined,{local:stored,wallAt:wallAt+elapsed}),scroll:(y:number)=>browserWindow.scrollY=y,scrollY:()=>browserWindow.scrollY,
@@ -169,7 +171,7 @@ test("direct input, keyboard, pause, hints and reveal use the shared practice li
  ui.click("data-action","hint");ui.advance(500);ui.click("data-action","reveal");
  const a=ui.saved().attempts[0];assert.equal(a.interrupted,true);assert.equal(a.hint,true);assert.equal(a.revealed,true);
  assert.equal(a.answerFormat,"direct-recall");assert.equal(a.finalResult,"revealed");
- assert.ok(ui.app.innerHTML.includes("Answer revealed."));
+ assert.ok(ui.app.innerHTML.includes("Answer revealed"));
 });
 test("multiple choice stays at five options and its keyboard shortcuts still grade",()=>{
  const ui=appHarness();ui.begin("card-number","multiple-choice");
@@ -200,7 +202,7 @@ test("sequence setup remembers its own input format without changing position pr
  assert.equal(ui.saved().settings.sequenceAnswerFormat,"direct-recall");
  assert.equal(ui.saved().settings.answerFormat,"multiple-choice");
  ui.begin("number-card","multiple-choice");ui.click("data-action","finish");ui.click("data-action","summary-progress");
- ui.click("data-view","deck");
+ ui.click("data-view","practice");ui.click("data-practice-type","sequence");
  assert.ok(ui.app.innerHTML.includes('data-sequence-format="direct-recall" aria-pressed="true"'));
  ui.click("data-action","start-sequence");
  assert.equal(ui.state().q.answerFormat,"direct-recall");
@@ -428,23 +430,23 @@ test("reload and reopening restore Progress filters, sorting, scroll and answer 
 });
 
 test("Deck Browse restores the selected card and sequence setup keeps its selections",()=>{
- const ui=appHarness();ui.click("data-deck-mode","browse");
+ const ui=appHarness();ui.click("data-view","deck");ui.click("data-deck-mode","browse");
  for(let i=0;i<16;i++)ui.click("data-action","following");
  let next=ui.reload();assert.equal(next.state().view,"deck");assert.equal(next.state().deckIndex,16);
- assert.ok(next.app.innerHTML.includes('data-deck-mode="browse" class="selected"'));
+ assert.ok(next.app.innerHTML.includes('data-deck-mode="browse" aria-pressed="true"'));
  assert.ok(next.app.innerHTML.includes('id="jump" type="range" min="1" max="52" value="17"'));
- next.click("data-deck-mode","quiz");next.click("data-sequence-direction","sequence-backward");
+ next.click("data-view","practice");next.click("data-practice-type","sequence");next.click("data-sequence-direction","sequence-backward");
  next.click("data-sequence-format","direct-recall");next.choose("sequence-start","random");
- next=next.reload();assert.ok(next.app.innerHTML.includes('data-sequence-direction="sequence-backward" class="selected"'));
+ next=next.reload();assert.ok(next.app.innerHTML.includes('data-sequence-direction="sequence-backward" aria-pressed="true"'));
  assert.ok(next.app.innerHTML.includes('data-sequence-format="direct-recall" aria-pressed="true"'));
- assert.ok(next.app.innerHTML.includes('value="random" selected'));
- next.click("data-view","practice");next.click("data-mode","mixed");next.click("data-practice-format","direct-recall");next.choose("minutes","10");
+ assert.ok(next.app.innerHTML.includes('data-sequence-start="random" aria-pressed="true"'));
+ next.click("data-view","practice");next.click("data-practice-type","position");next.click("data-mode","mixed");next.click("data-practice-format","direct-recall");next.choose("minutes","10");
  next=next.reload();assert.equal(next.state().view,"practice");
  assert.ok(next.app.innerHTML.includes('data-mode="mixed" aria-pressed="true"'));
  assert.ok(next.app.innerHTML.includes('data-practice-format="direct-recall" aria-pressed="true"'));
  assert.ok(next.app.innerHTML.includes("Start 10-minute session"));
  next.click("data-view","settings");next=next.reload();assert.equal(next.state().view,"settings");
- assert.ok(next.app.innerHTML.includes("Install Deckwise"));
+ assert.ok(next.app.innerHTML.includes('data-action="install"'));
 });
 
 test("reload resumes an unfinished digit answer paused and excludes closed time",()=>{
@@ -469,7 +471,7 @@ for(const direction of ["sequence-forward","sequence-backward"])test(direction+"
  ui.click("data-rank","J");ui.advance(300);ui.click("data-suit","D");
  const [rank,suit]=STACK[position-1];ui.click("data-rank",rank);ui.advance(100);
  const previous=ui.saved().attempts.map((a:any)=>a.id),id=ui.state().q.id;
- ui=ui.reload(3600000);assert.equal(ui.state().view,"deck");assert.equal(ui.state().paused,true);
+ ui=ui.reload(3600000);assert.equal(ui.state().view,"practice");assert.equal(ui.state().paused,true);
  assert.equal(ui.state().q.id,id);assert.equal(ui.state().q.position,position);assert.equal(ui.state().q.input.rank,rank);
  assert.equal(ui.state().q.lastIncorrect,"Jack of Diamonds");
  assert.equal((ui.app.innerHTML.match(/data-context-position="/g)??[]).length,2);
@@ -504,7 +506,88 @@ test("blocked UI storage leaves training and raw progress usable",()=>{
 
 test("a new tab restores preferences without taking over another tab's active quiz",()=>{
  const ui=appHarness();ui.beginSequence();ui.click("data-rank","J");
- const reopened=ui.reopen();assert.equal(reopened.state().active,null);assert.equal(reopened.state().view,"deck");
+ const reopened=ui.reopen();assert.equal(reopened.state().active,null);assert.equal(reopened.state().view,"practice");
  assert.ok(reopened.app.innerHTML.includes('data-action="start-sequence"'));
  assert.equal(ui.state().q.input.rank,"J");
+});
+
+function focusSeed(sequence=false) {
+ const d=emptyData(),now=50*86400000;
+ d.settings.answerFormat="direct-recall";d.settings.sequenceAnswerFormat="direct-recall";
+ const directions=sequence?["sequence-forward","sequence-backward"]:["card-number","number-card"];
+ for(const direction of directions) {
+  const session={id:"history-"+direction,mode:direction as any,answerFormat:"direct-recall" as const,startedAt:now-900000,endedAt:now-500000,duration:60000};
+  d.sessions.push(session);
+  for(let p=1;p<=8;p++)d.attempts.push({id:direction+p,sessionId:session.id,position:p,direction:direction as any,answerFormat:"direct-recall",at:now-600000+p,
+   firstCorrect:p>5,wrong:p>5?0:1,hint:false,revealed:false,elapsedMs:p>5?1000:7000,interrupted:false,recentExposure:false,finalResult:p>5?"correct":"corrected"});
+ }
+ return d;
+}
+function answerCurrent(ui:ReturnType<typeof appHarness>) {
+ if(ui.state().q.direction==="card-number"){for(const digit of String(ui.state().q.position))ui.key(digit);ui.key("Enter");}
+ else ui.cardAnswer();
+}
+test("Practice owns both quiz types and Deck only offers the three browse views",()=>{
+ const ui=appHarness();assert.equal(ui.state().view,"practice");
+ assert.ok(ui.app.innerHTML.includes('data-action="start-sequence"'));
+ assert.equal(ui.app.innerHTML.includes("Answer format</span>"),false);
+ ui.click("data-practice-type","position");assert.ok(ui.app.innerHTML.includes('data-minutes="5"'));
+ ui.click("data-view","deck");assert.equal(ui.app.innerHTML.includes('data-action="start-sequence"'),false);
+ for(const view of ["browse","ribbon","grid"])assert.ok(ui.app.innerHTML.includes('data-deck-mode="'+view+'"'));
+ ui.click("data-deck-mode","grid");assert.equal((ui.app.innerHTML.match(/data-browse-position="/g)??[]).length,52);
+ ui.click("data-browse-position","31");assert.equal(ui.state().deckIndex,30);
+ assert.ok(ui.app.innerHTML.includes('data-deck-mode="browse" aria-pressed="true"'));
+ ui.click("data-deck-mode","ribbon");const next=ui.reload();
+ assert.ok(next.app.innerHTML.includes('data-deck-mode="ribbon" aria-pressed="true"'));assert.equal(next.state().deckIndex,30);
+});
+for(const sequence of [false,true])test((sequence?"sequence":"position")+" weakest-five drill cycles three times, keeps direction and survives reload",()=>{
+ let ui=appHarness(focusSeed(sequence));ui.click("data-view","progress");ui.click("data-stats-type",sequence?"sequence":"position");
+ ui.click("data-report-format","direct-recall");assert.ok(ui.app.innerHTML.includes("Drill weakest 5"));
+ assert.equal(ui.app.innerHTML.includes("<h1>Progress</h1>"),false);
+ assert.equal(ui.app.innerHTML.includes('id="all-cards" data-disclosure="cards" class="report-section" open'),false);
+ const oldCount=ui.saved().attempts.length;ui.click("data-action","drill-weakest");
+ const session=ui.state().active,chosen=JSON.parse(JSON.stringify(session.focus.mappings));
+ assert.equal(session.focus.target,15);assert.equal(session.answerFormat,"direct-recall");assert.equal(session.runTarget,undefined);
+ assert.equal(chosen.length,5);assert.ok(new Set(chosen.map((m:any)=>m.direction)).size===2);
+ const prompts:string[]=[];
+ for(let i=0;i<15;i++){
+  if(i===6){const id=ui.state().q.id;ui=ui.reload(60000);assert.equal(ui.state().paused,true);assert.equal(ui.state().q.id,id);ui.click("data-action","pause");}
+  const q=ui.state().q;prompts.push(q.direction+":"+q.position);
+  assert.equal(q.position,chosen[i%5].position);assert.equal(q.direction,chosen[i%5].direction);
+  ui.advance(200);answerCurrent(ui);
+ }
+ const d=ui.saved(),finished=d.sessions.at(-1);assert.equal(d.attempts.length,oldCount+15);
+ assert.equal(finished.focus.completed,true);assert.equal(finished.focus.elapsedMs,3000);
+ assert.equal(new Set(prompts).size,5);assert.deepEqual(prompts.slice(0,5),prompts.slice(5,10));
+ assert.ok(ui.dialogHtml().includes("Drill complete"));assert.deepEqual(validate(d),d);
+ ui.click("data-action","summary-progress");assert.ok(ui.app.innerHTML.includes("Drill 5"));
+});
+test("early drill endings preserve wrong answers, hints and incomplete status",()=>{
+ const ui=appHarness(focusSeed());ui.click("data-view","progress");ui.click("data-stats-type","position");ui.click("data-stats-direction","number-card");
+ ui.click("data-report-format","direct-recall");ui.click("data-action","drill-weakest");
+ ui.click("data-rank","J");ui.advance(300);ui.click("data-suit","D");
+ assert.ok(ui.app.innerHTML.includes("Incorrect: Jack of Diamonds"));assert.equal(ui.state().q.input.rank,"");
+ ui.click("data-action","hint");ui.advance(200);ui.cardAnswer();ui.click("data-action","finish");
+ const d=ui.saved(),a=d.attempts.at(-1);assert.equal(a.firstCorrect,false);assert.equal(a.wrong,1);assert.equal(a.hint,true);
+ assert.equal(a.elapsedMs,300);assert.equal(a.finalElapsedMs,500);assert.equal(d.sessions.at(-1).focus.completed,false);
+ assert.ok(ui.dialogHtml().includes("Drill ended"));assert.deepEqual(validate(d),d);
+});
+test("legacy Deck quiz preferences migrate to Practice without losing setup or history",()=>{
+ const d=emptyData();d.settings.sequenceAnswerFormat="direct-recall";
+ const old={version:1,view:"deck",deckMode:"quiz",sequenceDirection:"sequence-backward",sequenceStart:"random",filter:"sequence"};
+ const ui=appHarness(d,{local:new Map([["deckwise.ui.v1",JSON.stringify(old)]])});
+ assert.equal(ui.state().view,"practice");
+ assert.ok(ui.app.innerHTML.includes('data-sequence-direction="sequence-backward" aria-pressed="true"'));
+ assert.ok(ui.app.innerHTML.includes('data-sequence-start="random" aria-pressed="true"'));
+ assert.deepEqual(ui.saved(),d);
+});
+
+test("card and session disclosures retain their state through sorting and reload",()=>{
+ let ui=appHarness(focusSeed());ui.click("data-view","progress");ui.click("data-stats-type","position");
+ ui.toggle("all-cards",true);ui.choose("card-sort","mastery");ui.toggle("session-history",true);
+ ui=ui.reload();assert.ok(ui.app.innerHTML.includes('id="all-cards" data-disclosure="cards" class="report-section" open'));
+ assert.ok(ui.app.innerHTML.includes('id="session-history" data-disclosure="history" class="report-section" open'));
+ assert.ok(ui.app.innerHTML.includes('value="mastery" selected'));
+ ui.toggle("all-cards",false);ui=ui.reload();
+ assert.equal(ui.app.innerHTML.includes('id="all-cards" data-disclosure="cards" class="report-section" open'),false);
 });

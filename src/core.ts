@@ -56,7 +56,10 @@ export interface Attempt {
   finalResult?: "correct" | "corrected" | "revealed" | "unresolved";
   finalElapsedMs?: number;
 }
+export interface FocusMapping {position:number; direction:Direction}
+export interface FocusPlan {mappings:FocusMapping[]; target:number; elapsedMs:number; completed:boolean}
 export interface Session {
+  focus?: FocusPlan;
   answerFormat?: AnswerFormat;
   id: string;
   startedAt: number;
@@ -403,6 +406,14 @@ export function validate(raw: unknown): Data {
       (s.runTarget !== undefined && (!isSequence(s.mode) || s.runTarget !== 52 || !Number.isInteger(s.startPosition) || s.startPosition! < 1 || s.startPosition! > 52 || !finite(s.elapsedMs) || typeof s.completed !== "boolean"))
     )
       throw Error("Invalid session history.");
+    if (s.focus !== undefined) {
+      const f=s.focus;
+      if (!f || s.runTarget !== undefined || !Array.isArray(f.mappings) || f.mappings.length<1 || f.mappings.length>5 ||
+          f.mappings.some(m=>!m || !Number.isInteger(m.position) || m.position<1 || m.position>52 ||
+            !["card-number","number-card","sequence-forward","sequence-backward"].includes(m.direction) || isSequence(m.direction)!==isSequence(s.mode)) ||
+          new Set(f.mappings.map(m=>m.direction+":"+m.position)).size!==f.mappings.length ||
+          f.target!==f.mappings.length*3 || !finite(f.elapsedMs) || typeof f.completed!=="boolean") throw Error("Invalid focused drill.");
+    }
     sessionIds.add(s.id);
     sessionFormats.set(s.id,formatOf(s));
   }
@@ -437,6 +448,8 @@ export function validate(raw: unknown): Data {
       )
     )
       throw Error("Invalid attempt history.");
+    const session=d.sessions.find(s=>s.id===a.sessionId)!;
+    if (session.focus && !session.focus.mappings.some(m=>m.position===a.position && m.direction===a.direction)) throw Error("Answer outside focused drill.");
     attemptIds.add(a.id);
   }
   for (const [k, m] of Object.entries(d.memory)) {

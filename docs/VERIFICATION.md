@@ -134,3 +134,12 @@ All 21 core tests pass, including mode-specific evidence, rolling 7/30-day windo
 - Reload recovery checks cover partial numeric/card input, misses and correction timing, reveal/Next behavior, both sequence directions through completion of all 52 unique cards, existing context, pause, exclusion of closed-page time, and prevention of duplicate history.
 - Recovery validation rejects mismatched sessions, formats, sequence positions, malformed values, and stale first-miss data. UI storage failure leaves normal answer saving usable; new tabs do not resume another tab's quiz.
 - Reviewed Mark's supplied phone screenshot. The browser automation helper timed out twice during initialization, so no rendered layout check is claimed for this change.
+
+## Unified Practice, deck views, and focused drills — October 15, 2026
+
+- All 99 tests pass, along with TypeScript checking, production bundling, service-worker generation, and diff checks.
+- New focused-drill tests cover format/direction isolation, observed-only ranking, five mappings with three spaced turns each, first misses, hints, interruptions, early finish, reload recovery, backup validation, recoverable deletion, and exclusion from full-deck records. Both sequence and position drills execute the real app handlers.
+- Interaction tests preserve the prior full-run, direct-input, timing, scheduling, report, and recovery coverage. New checks cover quiz ownership in Practice, all three Deck views, grid jumping, Ribbon preferences, legacy screen migration, and disclosure state across sorting and reload.
+- Rendered browser checks passed at 390×844 and 320×667. Inspected Practice selectors, direct sequence input/context, Cards/Ribbon/Grid, and compact Progress. Ribbon navigation reaches card 52; Grid exposes all 52 cards. The 320px Practice screen has no horizontal overflow.
+- Completed a real browser focused drill from an independently missed sequence mapping: three correct answers, automatic completion, 100% independent accuracy, and a normal results dialog. The automated suite additionally completes five-mapping, 15-answer drills in both quiz families. Separate local-origin data was used throughout; live progress was untouched.
+- A fresh browser tab restored Practice/Position and the selected format/session length. Temporary responsive viewport overrides are reset after verification.
