@@ -143,3 +143,11 @@ All 21 core tests pass, including mode-specific evidence, rolling 7/30-day windo
 - Rendered browser checks passed at 390×844 and 320×667. Inspected Practice selectors, direct sequence input/context, Cards/Ribbon/Grid, and compact Progress. Ribbon navigation reaches card 52; Grid exposes all 52 cards. The 320px Practice screen has no horizontal overflow.
 - Completed a real browser focused drill from an independently missed sequence mapping: three correct answers, automatic completion, 100% independent accuracy, and a normal results dialog. The automated suite additionally completes five-mapping, 15-answer drills in both quiz families. Separate local-origin data was used throughout; live progress was untouched.
 - A fresh browser tab restored Practice/Position and the selected format/session length. Temporary responsive viewport overrides are reset after verification.
+## Report-window audit and centered Ribbon — October 17, 2026
+
+- All 106 tests pass, along with TypeScript checking, Vite production bundling, service-worker generation, and diff checks.
+
+- Added report-filter tests for exact weekly/monthly boundaries, one millisecond outside them, daylight-saving offset changes, quiz/direction/format isolation, and unknown legacy format classification. Real-app interaction tests toggle each report period and verify answer counts, accuracy, median, session counts, date span, shared Practice window, and unchanged raw history.
+- Browser testing used a temporary localhost-only fixture containing 48 synthetic answers at 1, 10, and 40 days old. Position/Mixed/Direct recall changed from 4 of 12 answers, 100%, 1.5s for 7 days; to 8 of 12, 75%, 2.0s for 30 days; to 12 of 12, 50%, 2.0s for All time. Report selector order was confirmed in the browser. Live user data was not accessed or changed.
+- Ribbon interaction coverage checks first/last positions, arrows, fractional swipe positions, slider input, restored center selection, switching views, and unchanged answer history. Rendering checks after a temporary viewport change were interrupted by browser-control timeouts; no successful rendered Ribbon-center check is claimed.
+- The temporary browser fixture is removed before commit and is excluded from the production build.

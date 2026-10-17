@@ -38,7 +38,7 @@ import { cardImage, numberCard } from "./cards";
 import {UI_STORE, loadUiState, type UiState, type QuestionState, type View, type ReportFilter} from "./ui-state";
 import {weakestMappings,focusPrompt} from "./focus";
 import { uiIcon } from "./icons";
-import { sessionTrend, directionComparison, practiceEvidence, cardRanking, mappingInsights, type CardSort, sequenceRuns } from "./reporting";
+import { sessionTrend, directionComparison, practiceEvidence, reportEvidence, cardRanking, mappingInsights, type CardSort, sequenceRuns } from "./reporting";
 const app = document.querySelector<HTMLDivElement>("#app")!;
 const STORE = "deckwise.v1";
 let storageProblem = "";
@@ -235,7 +235,7 @@ function questionPrompt() {
 }
 
 function formatToggle(format: AnswerFormat | "all", context: "practice" | "sequence" | "report") {
-  const options: [AnswerFormat | "all",string][] = [["multiple-choice","Multiple choice"],["direct-recall","Direct recall"]];
+  const options: [AnswerFormat | "all",string][] = [["direct-recall","Direct recall"],["multiple-choice","Multiple choice"]];
   if (context === "report") options.push(["all","All formats"]);
   return `<div class="format-selector"><div class="segmented format-toggle" role="group" aria-label="Answer format">${options.map(([id,label]) => `<button data-${context}-format="${id}" aria-pressed="${format === id}" class="${format === id ? "selected" : ""}">${label}</button>`).join("")}</div></div>`;
 }
@@ -511,8 +511,11 @@ function deck() {
     document.querySelector("#deck-position")!.textContent=`${deckIndex+1} of 52`;
     document.querySelector("#jump-value")!.textContent=String(deckIndex+1);
     (document.querySelector("#jump") as HTMLInputElement).value=String(deckIndex+1);
-    const visible=deckMode==="ribbon"?Math.ceil(gallery.clientWidth/galleryStep(gallery)):1;
-    for(let i=deckIndex;i<Math.min(52,deckIndex+visible);i++)lastExposure.set(i+1,Date.now());
+    // Symmetric Ribbon padding makes scrollLeft / step identify the center card.
+    const step=galleryStep(gallery),padding=deckMode==="ribbon"?(gallery.clientWidth-step)/2:0;
+    const first=Math.max(0,Math.floor((gallery.scrollLeft-padding)/step));
+    const last=Math.min(51,Math.ceil((gallery.scrollLeft+gallery.clientWidth-padding)/step)-1);
+    for(let i=first;i<=last;i++)lastExposure.set(i+1,Date.now());
     saveUi();
   },{passive:true});
   lastExposure.set(deckIndex+1,Date.now());
@@ -537,13 +540,16 @@ function goDeck(index:number,instant=false) {
   const gallery=document.querySelector<HTMLDivElement>(".gallery");
   gallery?.scrollTo({left:galleryStep(gallery)*deckIndex,behavior:instant||matchMedia("(prefers-reduced-motion: reduce)").matches?"instant":"smooth"});
 }
-function filtered() {
-  return data.attempts.filter(
-    (a) =>
-      (filter === "all" ? !isSequence(a.direction) : filter === "sequence" ? isSequence(a.direction) : a.direction === filter) &&
-      (period === "all" || a.at >= Date.now() - Number(period) * 86400000) &&
-      (reportAnswerFormat() === "all" || formatOf(a) === reportAnswerFormat()),
-  );
+function filtered(window = period) {
+  return reportEvidence(data.attempts,filter as Parameters<typeof reportEvidence>[1],reportAnswerFormat(),window);
+}
+function resultsCoverage(attempts: Attempt[]) {
+  const total=filtered("all").length;
+  const firstAt=attempts.reduce((at,a)=>Math.min(at,a.at),Infinity),lastAt=attempts.reduce((at,a)=>Math.max(at,a.at),0);
+  const showYear=attempts.length>0 && [firstAt,lastAt].some(at=>new Date(at).getFullYear()!==new Date(Date.now()).getFullYear());
+  const date=(at:number)=>new Date(at).toLocaleDateString(undefined,{month:"short",day:"numeric",...(showYear?{year:"numeric" as const}:{})});
+  const first=attempts.length?date(firstAt):"",last=attempts.length?date(lastAt):"";
+  return `<div class="results-coverage" aria-label="Results coverage">${attempts.length} of ${total} answers${first?` · ${esc(first)}${first===last?"":" – "+esc(last)}`:""}</div>`;
 }
 function trend(attempts: Attempt[]): string {
   const sessions = sessionTrend(data.sessions, attempts);
@@ -587,7 +593,7 @@ function sequenceTrend() {
   return `<div class="chart run-trend"><div class="trend-legend"><span>Raw time</span><span>Scored time</span><span>${runs.length} runs</span></div><svg viewBox="0 0 380 160" role="img" aria-label="Raw and penalty-adjusted completion times; exact times and accuracy appear below"><line x1="30" x2="350" y1="125" y2="125" stroke="#2c3e5a"/><polyline points="${runs.map((x,i)=>point(i,x.r.elapsedMs!)).join(" ")}" fill="none" stroke="#3979cb" stroke-width="2"/><polyline points="${runs.map((x,i)=>point(i,x.r.scoredMs!)).join(" ")}" fill="none" stroke="#b3d3ff" stroke-width="2"/>${runs.map((x,i)=>`<circle cx="${point(i,x.r.scoredMs!).split(",")[0]}" cy="${point(i,x.r.scoredMs!).split(",")[1]}" r="3" fill="#b3d3ff"><title>${fmtDate(x.s.startedAt)} · ${formatName(formatOf(x.s))}: ${runTime(x.r.scoredMs)} scored, ${x.r.accuracy.toFixed(0)}% accuracy</title></circle>`).join("")}<text x="30" y="150" font-size="10" fill="#9aabc6">${fmtDate(runs[0].s.startedAt)}</text><text x="310" y="150" font-size="10" fill="#9aabc6">Latest</text></svg><div class="table-wrap"><table><thead><tr><th>Run</th><th>Raw</th><th>Scored</th><th>Accuracy</th></tr></thead><tbody>${[...runs].reverse().map(({s,r})=>`<tr><td>${fmtDate(s.startedAt)}<br/><small>${s.mode === "sequence-forward" ? "Forward" : "Backward"} · ${formatName(formatOf(s))}</small></td><td>${runTime(r.elapsedMs)}</td><td>${runTime(r.scoredMs)}</td><td>${r.accuracy.toFixed(0)}%</td></tr>`).join("")}</tbody></table></div></div>`;
 }
 function directionInsights() {
-  const evidence = data.attempts.filter(a => !isSequence(a.direction) && (period === "all" || a.at >= Date.now()-Number(period)*86400000) && (reportFormat === "all" || formatOf(a) === reportFormat));
+  const evidence = reportEvidence(data.attempts,"all",reportFormat,period);
   const comparison = directionComparison(evidence);
   const note = comparison.reason === "insufficient" ? "Build evidence in both directions before choosing a focus. Comparisons need 20 eligible answers across two sessions per direction, covering at least 10 shared cards."
     : comparison.reason === "accuracy" ? `Focus on ${modeName(comparison.focus!)}: accuracy is ${comparison.accuracyGap.toFixed(0)} percentage points lower on shared cards.`
@@ -651,7 +657,7 @@ function progress() {
     .filter(session => (filter === "all" ? !isSequence(session.mode) : filter === "sequence" ? isSequence(session.mode) : session.mode === filter || session.focus?.mappings.some(m=>m.direction===filter) || (!isSequence(filter) && session.mode === "mixed")) &&
       (period === "all" || session.startedAt >= Date.now() - Number(period) * 86400000) && (reportAnswerFormat() === "all" || formatOf(session) === reportAnswerFormat()));
   chrome(
-    `<section class="progress-controls" aria-label="Progress filters"><div class="segmented quiz-type-toggle" role="group" aria-label="Quiz type">${[["sequence","Sequence quiz"],["position","Position practice"]].map(([id,label]) => `<button data-stats-type="${id}" aria-pressed="${(filter.startsWith("sequence") ? "sequence" : "position") === id}" class="${(filter.startsWith("sequence") ? "sequence" : "position") === id ? "selected" : ""}">${label}</button>`).join("")}</div><div class="segmented practice-toggle position-directions" role="group" aria-label="${filter.startsWith("sequence") ? "Sequence direction" : "Practice type"}">${(filter.startsWith("sequence") ? [["sequence-forward","Forward"],["sequence-backward","Backward"],["sequence","Combined"]] : [["card-number","Card → number"],["number-card","Number → card"],["all","Mixed"]]).map(([id,label]) => `<button data-stats-direction="${id}" aria-pressed="${filter === id}" class="${filter === id ? "selected" : ""}">${label}</button>`).join("")}</div>${formatToggle(reportAnswerFormat(),"report")}<div class="segmented stats-period-toggle" role="group" aria-label="Statistics period">${[["7","7 days"],["30","30 days"],["all","All time"]].map(([id,label]) => `<button data-stats-period="${id}" aria-pressed="${period === id}" class="${period === id ? "selected" : ""}">${label}</button>`).join("")}</div></section><div class="summary-grid stat-cards"><div><strong>${s.eligibleTotal ? s.accuracy.toFixed(0) + "%" : "—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median recall</span></div><div><strong>${s.total}</strong><span>Questions answered</span></div><div><strong>${slow.length ? Math.round((within / slow.length) * 100) + "%" : "—"}</strong><span>Within ${data.settings.speedTarget}s target</span></div></div>${needsWork()}${!s.total ? emptyResults() : `${filter.startsWith("sequence") ? sequenceTrend() : trend(attempts)}<div class="report-notes"><span>${s.wrong} first-answer misses</span><span>${s.hints} questions with hints</span><span>${new Set(attempts.map((a) => a.position)).size}/52 cards practiced</span></div>`}${filter.startsWith("sequence") ? sequenceBests() : directionInsights()}${perCardResults(attempts)}<details id="session-history" data-disclosure="history" class="report-section" ${historyExpanded?"open":""}><summary>Sessions (${sessions.length})</summary>${
+    `<section class="progress-controls" aria-label="Progress filters"><div class="segmented quiz-type-toggle" role="group" aria-label="Quiz type">${[["position","Position practice"],["sequence","Sequence quiz"]].map(([id,label]) => `<button data-stats-type="${id}" aria-pressed="${(filter.startsWith("sequence") ? "sequence" : "position") === id}" class="${(filter.startsWith("sequence") ? "sequence" : "position") === id ? "selected" : ""}">${label}</button>`).join("")}</div><div class="segmented practice-toggle position-directions" role="group" aria-label="${filter.startsWith("sequence") ? "Sequence direction" : "Practice type"}">${(filter.startsWith("sequence") ? [["sequence-forward","Forward"],["sequence-backward","Backward"],["sequence","Combined"]] : [["all","Mixed"],["card-number","Card → number"],["number-card","Number → card"]]).map(([id,label]) => `<button data-stats-direction="${id}" aria-pressed="${filter === id}" class="${filter === id ? "selected" : ""}">${label}</button>`).join("")}</div>${formatToggle(reportAnswerFormat(),"report")}<div class="segmented stats-period-toggle" role="group" aria-label="Statistics period">${[["7","7 days"],["30","30 days"],["all","All time"]].map(([id,label]) => `<button data-stats-period="${id}" aria-pressed="${period === id}" class="${period === id ? "selected" : ""}">${label}</button>`).join("")}</div>${resultsCoverage(attempts)}</section><div class="summary-grid stat-cards"><div><strong>${s.eligibleTotal ? s.accuracy.toFixed(0) + "%" : "—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median recall</span></div><div><strong>${s.total}</strong><span>Questions answered</span></div><div><strong>${slow.length ? Math.round((within / slow.length) * 100) + "%" : "—"}</strong><span>Within ${data.settings.speedTarget}s target</span></div></div>${needsWork()}${!s.total ? emptyResults() : `${filter.startsWith("sequence") ? sequenceTrend() : trend(attempts)}<div class="report-notes"><span>${s.wrong} first-answer misses</span><span>${s.hints} questions with hints</span><span>${new Set(attempts.map((a) => a.position)).size}/52 cards practiced</span></div>`}${filter.startsWith("sequence") ? sequenceBests() : directionInsights()}${perCardResults(attempts)}<details id="session-history" data-disclosure="history" class="report-section" ${historyExpanded?"open":""}><summary>Sessions (${sessions.length})</summary>${
       sessions.length
         ? `<div class="history-list">${sessions
             .slice(0, historyLimit)
@@ -739,7 +745,7 @@ function attemptList(attempts: Attempt[]) {
 }
 function settings() {
   chrome(
-    `<section class="settings-panel"><label>Session length<select id="minutes">${[1, 3, 5, 10].map((n) => `<option value="${n}" ${data.settings.minutes === n ? "selected" : ""}>${n} minutes</option>`).join("")}</select></label><label>Speed target<select id="speed">${[2, 3, 5, 8, 10].map((n) => `<option value="${n}" ${data.settings.speedTarget === n ? "selected" : ""}>${n} seconds</option>`).join("")}</select></label><label class="toggle-row"><span>Adapt to recall speed</span><input id="adaptive-speed" type="checkbox" ${data.settings.speedAdaptive ? "checked" : ""}/></label></section><section class="settings-panel"><button class="primary" data-action="export">Export a backup ↓</button><label class="file-label">Restore from a backup<input type="file" id="import" accept="application/json,.json"/></label></section><section class="settings-panel"><button class="primary" data-action="install">${installPrompt ? "Install app ↗" : "How to install ↗"}</button><p id="offline-status" class="muted">${navigator.onLine ? "Online" : "Offline"} · ${navigator.serviceWorker?.controller ? "Offline app ready" : "Offline setup available on the published site"}</p></section><section class="settings-panel"><button class="text-button danger" data-action="reset">Reset all progress</button></section><p class="footnote">Independent practice companion for Juan Tamariz’s Mnemonica. Deckwise v0.3 · <a href="https://www.me.uk/cards/" target="_blank" rel="noopener">Card artwork: Adrian Kennard (CC0)</a>.</p>`,
+    `<section class="settings-panel"><label>Session length<select id="minutes">${[1, 3, 5, 10].map((n) => `<option value="${n}" ${data.settings.minutes === n ? "selected" : ""}>${n} minutes</option>`).join("")}</select></label><label>Speed target<select id="speed">${[2, 3, 5, 8, 10].map((n) => `<option value="${n}" ${data.settings.speedTarget === n ? "selected" : ""}>${n} seconds</option>`).join("")}</select></label><label class="toggle-row"><span>Prioritize slower recall</span><input id="adaptive-speed" type="checkbox" ${data.settings.speedAdaptive ? "checked" : ""}/></label></section><section class="settings-panel"><button class="primary" data-action="export">Export a backup ↓</button><label class="file-label">Restore from a backup<input type="file" id="import" accept="application/json,.json"/></label></section><section class="settings-panel"><button class="primary" data-action="install">${installPrompt ? "Install app ↗" : "How to install ↗"}</button><p id="offline-status" class="muted">${navigator.onLine ? "Online" : "Offline"} · ${navigator.serviceWorker?.controller ? "Offline app ready" : "Offline setup available on the published site"}</p></section><section class="settings-panel"><button class="text-button danger" data-action="reset">Reset all progress</button></section><p class="footnote">Independent practice companion for Juan Tamariz’s Mnemonica. Deckwise v0.3 · <a href="https://www.me.uk/cards/" target="_blank" rel="noopener">Card artwork: Adrian Kennard (CC0)</a>.</p>`,
   );
 }
 function download(name: string, content: string, type: string) {

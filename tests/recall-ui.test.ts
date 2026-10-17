@@ -37,7 +37,7 @@ function appHarness(seed?: Data, persisted: HarnessStorage = {}) {
           return {id,events,attrs,dataset,isConnected:true,open:/(?:^|\s)open(?:\s|$)/.test(match[1]),value:match[1].match(/value="([^"]*)"/)?.[1],textContent:"",addEventListener(name:string,fn:Function){events.set(name,fn);}};
         });
         const events=new Map<string,Function>();
-        gallery={clientWidth:320,querySelector(){return {offsetWidth:320};},scrollLeft:0,isConnected:true,addEventListener(name:string,fn:Function){events.set(name,fn);},scrollTo(opts:any){this.scrollLeft=opts.left;events.get("scroll")?.();}};
+        gallery={clientWidth:320,querySelector(){return {offsetWidth:html.includes("gallery-ribbon")?80:320};},scrollLeft:0,isConnected:true,addEventListener(name:string,fn:Function){events.set(name,fn);},scrollTo(opts:any){this.scrollLeft=opts.left;events.get("scroll")?.();}};
       },
       querySelectorAll(selector:string){
         const name=selector.match(/^\[([\w-]+)\]$/)?.[1];
@@ -107,7 +107,7 @@ function appHarness(seed?: Data, persisted: HarnessStorage = {}) {
   const begin=(mode="card-number",format="direct-recall")=>{
     click("data-view","practice");click("data-practice-type","position");click("data-practice-format",format);click("data-mode",mode);click("data-action","start");
   };
-  const choose=(id:string,value:string)=>{if(id==="sequence-start")return click("data-sequence-start",value);if(id==="minutes"&&app.querySelector('[data-minutes="'+value+'"]'))return click("data-minutes",value);const field=app.querySelector("#"+id);assert.ok(field?.events.get("change"));field.events.get("change")({target:{value}});};
+  const choose=(id:string,value:string)=>{if(id==="sequence-start")return click("data-sequence-start",value);if(id==="minutes"&&app.querySelector('[data-minutes="'+value+'"]'))return click("data-minutes",value);const field=app.querySelector("#"+id),event=id==="jump"?"input":"change";assert.ok(field?.events.get(event));field.events.get(event)({target:{value}});};
   const beginSequence=(direction="sequence-forward",format="direct-recall",random=false)=>{
     click("data-view","practice");click("data-practice-type","sequence");click("data-sequence-format",format);click("data-sequence-direction",direction);
     if(random)choose("sequence-start","random");click("data-action","start-sequence");
@@ -590,4 +590,79 @@ test("card and session disclosures retain their state through sorting and reload
  assert.ok(ui.app.innerHTML.includes('value="mastery" selected'));
  ui.toggle("all-cards",false);ui=ui.reload();
  assert.equal(ui.app.innerHTML.includes('id="all-cards" data-disclosure="cards" class="report-section" open'),false);
+});
+
+test("selectors put Direct recall first and reports put Position practice and Mixed first without changing selections",()=>{
+ const ui=appHarness();
+ const order=(attribute:string)=>[...ui.app.innerHTML.matchAll(new RegExp(attribute+'="([^"]+)"','g'))].map(m=>m[1]);
+ assert.deepEqual(order('data-sequence-format'),['direct-recall','multiple-choice']);
+ assert.ok(ui.app.innerHTML.includes('data-sequence-format="multiple-choice" aria-pressed="true"'));
+ ui.click('data-practice-type','position');assert.deepEqual(order('data-practice-format'),['direct-recall','multiple-choice']);
+ ui.click('data-view','progress');
+ assert.deepEqual(order('data-stats-type'),['position','sequence']);
+ assert.deepEqual(order('data-report-format'),['direct-recall','multiple-choice','all']);
+ ui.click('data-stats-type','position');assert.deepEqual(order('data-stats-direction'),['all','card-number','number-card']);
+ ui.click('data-stats-direction','number-card');ui.click('data-report-format','direct-recall');
+ const reloaded=ui.reload();assert.ok(reloaded.app.innerHTML.includes('data-stats-direction="number-card" aria-pressed="true"'));
+ assert.ok(reloaded.app.innerHTML.includes('data-report-format="direct-recall" aria-pressed="true"'));
+ ui.click('data-view','settings');assert.ok(ui.app.innerHTML.includes('Prioritize slower recall'));
+});
+
+function dateWindowSeed() {
+ const d=emptyData(),now=50*86400000;
+ for(const direction of ['card-number','number-card','sequence-forward','sequence-backward'] as const)
+ for(const format of ['multiple-choice','direct-recall'] as const)
+ for(const age of [1,10,40]) {
+  const at=now-age*86400000,id=`${direction}-${format}-${age}`;
+  d.sessions.push({id,mode:direction,answerFormat:format,startedAt:at-10000,endedAt:at+2000,duration:60000});
+  for(let i=0;i<2;i++){
+   const correct=age===1||age===10&&i===0;
+   d.attempts.push({id:id+i,sessionId:id,position:age===1?i+1:age===10?i+3:i+5,direction,answerFormat:format,at:at+i,
+    firstCorrect:correct,wrong:correct?0:1,hint:false,revealed:false,elapsedMs:age===1?1000+i*1000:8000,interrupted:false,recentExposure:false});
+  }
+ }
+ return d;
+}
+for(const family of ['position','sequence'])test(`${family} report controls filter multiweek history, counts, metrics, dates and sessions`,()=>{
+ let ui=appHarness(dateWindowSeed());const raw=JSON.stringify(ui.saved().attempts);
+ ui.click('data-view','progress');ui.click('data-stats-type',family);
+ const direction=family==='position'?'card-number':'sequence-forward';
+ ui.click('data-stats-direction',direction);
+ for(const format of ['direct-recall','multiple-choice','all']){
+  ui.click('data-report-format',format);const factor=format==='all'?2:1;
+  for(const [period,n,accuracy,median] of [['7',2,'100%','1.5s'],['30',4,'75%','2.0s'],['all',6,'50%','2.0s']] as const){
+   ui.click('data-stats-period',period);
+   const panel=ui.app.innerHTML.split('class="summary-grid stat-cards"')[1].split('</div></div>')[0];
+   assert.ok(panel.includes(`<strong>${n*factor}</strong><span>Questions answered</span>`));
+   assert.ok(panel.includes(`<strong>${accuracy}</strong>`));assert.ok(panel.includes(`<strong>${median}</strong>`));
+   assert.match(ui.app.innerHTML,new RegExp(`${n*factor} of ${6*factor} answers`));
+   assert.ok(ui.app.innerHTML.includes(`Sessions (${(n/2)*factor})`));
+  }
+ }
+ ui.click('data-report-format','direct-recall');ui.click('data-stats-period','7');
+ const coverage=ui.app.innerHTML.match(/aria-label="Results coverage">([^<]*)/)![1];
+ assert.match(coverage,/2 of 6 answers/);assert.ok(coverage.includes(new Date(49*86400000).toLocaleDateString(undefined,{month:"short",day:"numeric"})));assert.equal(coverage.includes(new Date(40*86400000).toLocaleDateString(undefined,{month:"short",day:"numeric"})),false);
+ ui.click('data-stats-direction',family==='position'?'all':'sequence');
+ assert.ok(ui.app.innerHTML.includes('4 of 12 answers'));
+ if(family==='position'){
+  ui.click('data-view','practice');ui.click('data-practice-type','position');ui.click('data-mode','card-number');ui.click('data-practice-format','direct-recall');
+  ui.click('data-stats-period','30');assert.ok(ui.app.innerHTML.includes('<strong>75%</strong>'));
+  ui.click('data-view','progress');assert.ok(ui.app.innerHTML.includes('8 of 12 answers'));
+ }
+ ui=ui.reload();assert.equal(JSON.stringify(ui.saved().attempts),raw);
+});
+
+test("Ribbon counter, slider and reload follow its center card at both ends and during swipes",()=>{
+ let ui=appHarness(emptyData());ui.click('data-view','deck');ui.click('data-deck-mode','ribbon');
+ const gallery=()=>ui.app.querySelector('.gallery');
+ assert.equal(gallery().scrollLeft,0);assert.equal(ui.state().deckIndex,0);
+ ui.click('data-action','following');assert.equal(gallery().scrollLeft,80);assert.equal(ui.state().deckIndex,1);
+ assert.equal(ui.app.querySelector('#deck-position').textContent,'2 of 52');assert.equal(ui.app.querySelector('#jump').value,'2');
+ gallery().scrollTo({left:80*17.45});assert.equal(ui.state().deckIndex,17);assert.equal(ui.app.querySelector('#deck-position').textContent,'18 of 52');
+ ui=ui.reload();assert.equal(gallery().scrollLeft,80*17);assert.equal(ui.state().deckIndex,17);
+ ui.choose('jump','52');assert.equal(gallery().scrollLeft,80*51);assert.equal(ui.app.querySelector('#deck-position').textContent,'52 of 52');
+ ui.click('data-action','following');assert.equal(ui.state().deckIndex,51);
+ ui.choose('jump','1');assert.equal(gallery().scrollLeft,0);assert.equal(ui.app.querySelector('#deck-position').textContent,'1 of 52');
+ const answers=JSON.stringify(ui.saved().attempts);ui.click('data-deck-mode','browse');assert.equal(gallery().scrollLeft,0);
+ assert.equal(JSON.stringify(ui.saved().attempts),answers);
 });

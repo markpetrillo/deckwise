@@ -72,14 +72,22 @@ export function mappingInsights(attempts: Attempt[], target = 3, direction: "car
   return {slowMappings, variableMappings, recentMisses:misses.length, concentratedMappings, coveredMisses:covered};
 }
 
-export function practiceEvidence(attempts: Attempt[], mode: Mode, period: "7" | "30" | "all", now = Date.now(), format?: AnswerFormat) {
-  const cutoff = period === "all" ? 0 : now - Number(period) * 86400000;
-  return attempts.filter(a => !isSequence(a.direction) && (mode === "mixed" || a.direction === mode) && a.at >= cutoff && (!format || formatOf(a) === format));
+type ReportPeriod = "7" | "30" | "all";
+type ReportDirection = "all" | "sequence" | Attempt["direction"];
+const periodCutoff = (period:ReportPeriod,now:number) => period === "all" ? 0 : now-Number(period)*86400000;
+/** Rolling windows share one rule across reports and position-practice summaries. */
+export function reportEvidence(attempts:Attempt[], direction:ReportDirection, format:AnswerFormat|"all", period:ReportPeriod, now=Date.now()) {
+  const cutoff=periodCutoff(period,now);
+  return attempts.filter(a=>(direction === "all" ? !isSequence(a.direction) : direction === "sequence" ? isSequence(a.direction) : a.direction === direction) &&
+    (format === "all" || formatOf(a) === format) && a.at >= cutoff);
+}
+export function practiceEvidence(attempts: Attempt[], mode: Mode, period: ReportPeriod, now = Date.now(), format?: AnswerFormat) {
+  return reportEvidence(attempts,mode === "mixed" ? "all" : mode,format ?? "all",period,now);
 }
 
 /** Full-deck records are compared only within the requested format/direction. */
 export function sequenceRuns(sessions: Session[], attempts: Attempt[], direction: SequenceDirection | "sequence", format: AnswerFormat | "all", period: "7" | "30" | "all", now = Date.now()) {
-  const cutoff = period === "all" ? 0 : now - Number(period) * 86400000;
+  const cutoff = periodCutoff(period,now);
   return sessions.filter(s => isSequence(s.mode) && (direction === "sequence" || s.mode === direction) && (format === "all" || formatOf(s) === format) && s.startedAt >= cutoff)
     .sort((a,b) => a.startedAt-b.startedAt)
     .map(s => ({s,r:sequenceResult(s,attempts)}))
