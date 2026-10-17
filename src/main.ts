@@ -159,7 +159,7 @@ window.addEventListener("pagehide",checkpointBeforeLeave);
 window.addEventListener("beforeunload",checkpointBeforeLeave);
 
 function chrome(body: string) {
-  app.innerHTML = `<div class="shell"><header class="header"><a href="#" class="brand" data-action="home"><img class="brand-mark" src="/brand-mark.svg" alt="" width="28" height="40"/>deckwise<span class="brand-dot">.</span></a><button class="icon-button" data-action="settings" aria-label="Settings">${uiIcon("settings")}</button></header>${storageProblem ? `<div class="warning" role="alert">${esc(storageProblem)} <button data-action="export">Export backup</button></div>` : ""}<main>${body}</main><nav class="nav" aria-label="Main navigation">${[
+  app.innerHTML = `<div class="shell"><header class="header"><a href="#" class="brand" data-action="home"><img class="brand-mark" src="/brand-mark.svg" alt="" width="28" height="40"/>deckwise<span class="brand-dot">.</span></a></header>${storageProblem ? `<div class="warning" role="alert">${esc(storageProblem)} <button data-action="export">Export backup</button></div>` : ""}<main>${body}</main><nav class="nav" aria-label="Main navigation">${[
     ["deck", "Deck", "♧"],
     ["practice", "Practice", "◎"],
     ["progress", "Progress", "▥"],
