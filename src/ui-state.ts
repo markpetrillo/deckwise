@@ -32,8 +32,8 @@ function pick<T extends string>(value: unknown, values: readonly T[], fallback: 
   return typeof value === "string" && values.includes(value as T) ? value as T : fallback;
 }
 export function defaultUiState(data: Data): UiState {
-  return {version:1,view:"practice",deckMode:"browse",deckIndex:0,practiceType:"sequence",cardsExpanded:false,historyExpanded:false,sequenceDirection:"sequence-forward",sequenceStart:"beginning",
-    filter:"sequence",positionFilter:"all",sequenceFilter:"sequence",reportFormat:formatOf(data.settings),
+  return {version:1,view:"practice",deckMode:"browse",deckIndex:0,practiceType:"position",cardsExpanded:false,historyExpanded:false,sequenceDirection:"sequence-forward",sequenceStart:"beginning",
+    filter:"all",positionFilter:"all",sequenceFilter:"sequence",reportFormat:formatOf(data.settings),
     sequenceReportFormat:data.settings.sequenceAnswerFormat ?? "multiple-choice",cardSort:"position",historyLimit:12,scrollY:0};
 }
 /** UI recovery is optional; malformed preferences must never affect answer history. */
@@ -44,7 +44,7 @@ export function restoreUiState(value: unknown, data: Data): UiState {
   return {...d,
     view:value.practiceType===undefined&&value.view==="deck"&&value.deckMode==="quiz"?"practice":pick(value.view,["deck","practice","progress","settings"],d.view),
     deckMode:pick(value.deckMode,["browse","ribbon","grid"],d.deckMode),
-    practiceType:pick(value.practiceType,["sequence","position"],value.view==="practice"?"position":d.practiceType),
+    practiceType:pick(value.practiceType,["sequence","position"],value.deckMode==="quiz"?"sequence":d.practiceType),
     cardsExpanded:typeof value.cardsExpanded==="boolean"?value.cardsExpanded:false,
     historyExpanded:typeof value.historyExpanded==="boolean"?value.historyExpanded:false,
     deckIndex:Number.isInteger(value.deckIndex) && Number(value.deckIndex) >= 0 && Number(value.deckIndex) < 52 ? Number(value.deckIndex) : 0,

@@ -185,3 +185,6 @@ details.report-section{margin-top:18px}details.report-section>summary{min-height
 .recall-help:empty{display:none}
 
 .results-coverage{font-size:11px;line-height:1.5;text-align:center;color:var(--muted);font-variant-numeric:tabular-nums;padding:1px 4px 0}
+
+.gallery-controls .ui-icon{display:block;width:24px;height:24px;stroke-width:2}
+.card-table-scope{font-size:11px;color:var(--muted);font-weight:400;white-space:nowrap}

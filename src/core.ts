@@ -101,7 +101,7 @@ export function emptyData(): Data {
     sessions: [],
     memory: {},
     settings: {
-      mode: "card-number",
+      mode: "mixed",
       minutes: 5,
       speedTarget: 3,
       speedAdaptive: true,

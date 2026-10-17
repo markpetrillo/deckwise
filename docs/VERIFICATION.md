@@ -151,3 +151,9 @@ All 21 core tests pass, including mode-specific evidence, rolling 7/30-day windo
 - Browser testing used a temporary localhost-only fixture containing 48 synthetic answers at 1, 10, and 40 days old. Position/Mixed/Direct recall changed from 4 of 12 answers, 100%, 1.5s for 7 days; to 8 of 12, 75%, 2.0s for 30 days; to 12 of 12, 50%, 2.0s for All time. Report selector order was confirmed in the browser. Live user data was not accessed or changed.
 - Ribbon interaction coverage checks first/last positions, arrows, fractional swipe positions, slider input, restored center selection, switching views, and unchanged answer history. Rendering checks after a temporary viewport change were interrupted by browser-control timeouts; no successful rendered Ribbon-center check is claimed.
 - The temporary browser fixture is removed before commit and is excluded from the production build.
+## Practice setup and navigation cleanup — October 17, 2026
+
+- All 109 tests pass. TypeScript checking, production build, service-worker generation, and diff checks pass.
+- Interaction coverage confirms matching Practice/Progress order, fresh Position/Mixed defaults, preserved saved Sequence/direction preferences, removal of Practice results and period controls, retained session lengths, collapsed Recently deleted with restore action, and 7/30-day/All-time numbers and scope labels in the per-card table.
+- Existing full runs, direct input, grading, timing, scheduling, backups, delete/restore, and reload tests remain passing. Both Deck arrows use mirrored SVG paths with shared dimensions and stroke styling.
+- The local browser preview started on a separate origin. The browser-control connection timed out before the page could be inspected, so no successful rendered visual check or screenshot is claimed for this cleanup.

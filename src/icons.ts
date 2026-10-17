@@ -1,4 +1,6 @@
 const paths: Record<string, string> = {
+  left: '<path d="M19 12H5m7-7-7 7 7 7"/>',
+  right: '<path d="M5 12h14m-7-7 7 7-7 7"/>',
   practice: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>',
   deck: '<path d="M7 5 4 6a2 2 0 0 0-1 2l3 12a2 2 0 0 0 2 1l3-1"/><rect x="9" y="3" width="12" height="17" rx="2"/><path d="M15 9v5m-2-2h4"/>',
   progress: '<path d="M5 19V12m7 7V7m7 12V3"/>',

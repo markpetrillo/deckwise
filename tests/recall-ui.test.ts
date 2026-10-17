@@ -4,7 +4,7 @@ import {readFileSync} from "node:fs";
 import {dirname, resolve} from "node:path";
 import vm from "node:vm";
 import ts from "typescript";
-import {STACK,cardName,emptyData,validate,type Data} from "../src/core";
+import {STACK,cardName,emptyData,validate,deleteSession,type Data} from "../src/core";
 
 /** Run the real app against a small in-memory DOM, without touching browser data. */
 interface HarnessStorage {local?:Map<string,string>;tab?:Map<string,string>;wallAt?:number;denyUi?:boolean}
@@ -197,7 +197,7 @@ test("session results and Progress use the chosen answer format without hiding o
 
 
 test("sequence setup remembers its own input format without changing position practice",()=>{
- const ui=appHarness();
+ const ui=appHarness();ui.click("data-practice-type","sequence");
  ui.click("data-sequence-format","direct-recall");
  assert.equal(ui.saved().settings.sequenceAnswerFormat,"direct-recall");
  assert.equal(ui.saved().settings.answerFormat,"multiple-choice");
@@ -265,7 +265,7 @@ test("legacy sequence history remains visible as multiple choice after reload",(
  const d=emptyData();delete d.settings.sequenceAnswerFormat;delete d.settings.answerFormat;
  const session={id:"legacy",startedAt:50*86400000-1000,endedAt:50*86400000,mode:"sequence-forward" as const,duration:0,runTarget:52,startPosition:1,elapsedMs:52000,completed:true};
  d.sessions=[session];d.attempts=STACK.map((_,i)=>({id:"a"+i,sessionId:"legacy",position:i+1,direction:"sequence-forward",at:session.startedAt+i,firstCorrect:true,wrong:0,hint:false,revealed:false,elapsedMs:1000,interrupted:false,recentExposure:false}));
- const ui=appHarness(d);ui.click("data-view","progress");
+ const ui=appHarness(d);ui.click("data-view","progress");ui.click("data-stats-type","sequence");
  assert.ok(ui.app.innerHTML.includes("Forward · Multiple choice"));assert.ok(ui.app.innerHTML.includes("1 completed"));
  ui.click("data-report-format","direct-recall");assert.ok(ui.app.innerHTML.includes("No results in this view"));
 });
@@ -395,7 +395,7 @@ test("random backward context wraps in run order and starts without clues",()=>{
 });
 
 test("Progress has four unlabelled accessible selector rows and preserves each quiz's filters",()=>{
- const ui=appHarness();ui.click("data-view","progress");
+ const ui=appHarness();ui.click("data-view","progress");ui.click("data-stats-type","sequence");
  const panel=ui.app.innerHTML.split('<section class="progress-controls"')[1].split("</section>")[0];
  assert.equal(panel.includes("<select"),false);
  for(const label of ["Quiz type","Sequence direction","Answer format","Statistics period"])assert.ok(panel.includes('aria-label="'+label+'"'));
@@ -529,7 +529,8 @@ function answerCurrent(ui:ReturnType<typeof appHarness>) {
 }
 test("Practice owns both quiz types and Deck only offers the three browse views",()=>{
  const ui=appHarness();assert.equal(ui.state().view,"practice");
- assert.ok(ui.app.innerHTML.includes('data-action="start-sequence"'));
+ assert.ok(ui.app.innerHTML.includes('data-practice-type="position" aria-pressed="true"'));
+ ui.click("data-practice-type","sequence");assert.ok(ui.app.innerHTML.includes('data-action="start-sequence"'));
  assert.equal(ui.app.innerHTML.includes("Answer format</span>"),false);
  ui.click("data-practice-type","position");assert.ok(ui.app.innerHTML.includes('data-minutes="5"'));
  ui.click("data-view","deck");assert.equal(ui.app.innerHTML.includes('data-action="start-sequence"'),false);
@@ -595,7 +596,7 @@ test("card and session disclosures retain their state through sorting and reload
 test("selectors put Direct recall first and reports put Position practice and Mixed first without changing selections",()=>{
  const ui=appHarness();
  const order=(attribute:string)=>[...ui.app.innerHTML.matchAll(new RegExp(attribute+'="([^"]+)"','g'))].map(m=>m[1]);
- assert.deepEqual(order('data-sequence-format'),['direct-recall','multiple-choice']);
+ ui.click('data-practice-type','sequence');assert.deepEqual(order('data-sequence-format'),['direct-recall','multiple-choice']);
  assert.ok(ui.app.innerHTML.includes('data-sequence-format="multiple-choice" aria-pressed="true"'));
  ui.click('data-practice-type','position');assert.deepEqual(order('data-practice-format'),['direct-recall','multiple-choice']);
  ui.click('data-view','progress');
@@ -646,8 +647,8 @@ for(const family of ['position','sequence'])test(`${family} report controls filt
  assert.ok(ui.app.innerHTML.includes('4 of 12 answers'));
  if(family==='position'){
   ui.click('data-view','practice');ui.click('data-practice-type','position');ui.click('data-mode','card-number');ui.click('data-practice-format','direct-recall');
-  ui.click('data-stats-period','30');assert.ok(ui.app.innerHTML.includes('<strong>75%</strong>'));
-  ui.click('data-view','progress');assert.ok(ui.app.innerHTML.includes('8 of 12 answers'));
+  assert.equal(ui.app.innerHTML.includes('data-stats-period'),false);assert.equal(ui.app.innerHTML.includes('Independent accuracy'),false);
+  ui.click('data-view','progress');ui.click('data-stats-period','30');assert.ok(ui.app.innerHTML.includes('8 of 12 answers'));
  }
  ui=ui.reload();assert.equal(JSON.stringify(ui.saved().attempts),raw);
 });
@@ -665,4 +666,31 @@ test("Ribbon counter, slider and reload follow its center card at both ends and 
  ui.choose('jump','1');assert.equal(gallery().scrollLeft,0);assert.equal(ui.app.querySelector('#deck-position').textContent,'1 of 52');
  const answers=JSON.stringify(ui.saved().attempts);ui.click('data-deck-mode','browse');assert.equal(gallery().scrollLeft,0);
  assert.equal(JSON.stringify(ui.saved().attempts),answers);
+});
+
+test("Practice defaults to Position and Mixed, matches report order, and has setup controls only",()=>{
+ let ui=appHarness();const order=(attribute:string)=>[...ui.app.innerHTML.matchAll(new RegExp(attribute+'="([^"]+)"','g'))].map(m=>m[1]);
+ assert.deepEqual(order('data-practice-type'),['position','sequence']);assert.deepEqual(order('data-mode'),['mixed','card-number','number-card']);
+ assert.ok(ui.app.innerHTML.includes('data-practice-type="position" aria-pressed="true"'));assert.ok(ui.app.innerHTML.includes('data-mode="mixed" aria-pressed="true"'));
+ for(const text of ['practice-stats','data-stats-period','Independent accuracy','Median recall','Cards practiced'])assert.equal(ui.app.innerHTML.includes(text),false);
+ for(const minutes of ['1','3','5','10'])assert.ok(ui.app.innerHTML.includes('data-minutes="'+minutes+'"'));
+ ui.click('data-practice-type','sequence');ui=ui.reload();assert.ok(ui.app.innerHTML.includes('data-practice-type="sequence" aria-pressed="true"'));
+ ui.click('data-practice-type','position');ui.click('data-mode','number-card');ui=ui.reload();assert.ok(ui.app.innerHTML.includes('data-mode="number-card" aria-pressed="true"'));
+});
+
+test("Recently deleted starts collapsed and retains the restore action",()=>{
+ const d=focusSeed();assert.equal(deleteSession(d,d.sessions[0].id),true);
+ const ui=appHarness(d);ui.click('data-view','progress');
+ assert.ok(ui.app.innerHTML.includes('<details class="report-section deleted-history"><summary>Recently deleted (1)</summary>'));
+ assert.ok(ui.app.innerHTML.includes('data-restore-session="history-card-number"'));
+ assert.equal(ui.saved().deletedSessions.length,1);
+});
+
+test("All 52 cards follows the selected date range and labels it instead of silently showing lifetime",()=>{
+ const ui=appHarness(dateWindowSeed());ui.click('data-view','progress');ui.click('data-stats-type','position');ui.click('data-stats-direction','card-number');ui.click('data-report-format','direct-recall');
+ const table=()=>ui.app.innerHTML.split('id="all-cards"')[1].split('</details>')[0];
+ const row=(position:number)=>table().split('<tr>').find((r:string)=>r.includes('data-position="'+position+'"'))!;
+ ui.click('data-stats-period','7');assert.ok(table().includes('· 7 days'));assert.ok(row(3).includes('<td>—'));
+ ui.click('data-stats-period','30');assert.ok(table().includes('· 30 days'));assert.ok(row(3).includes('<td>1<small'));assert.ok(row(5).includes('<td>—'));
+ ui.click('data-stats-period','all');assert.ok(table().includes('· All time'));assert.ok(row(5).includes('<td>1<small'));
 });
