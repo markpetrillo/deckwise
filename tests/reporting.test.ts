@@ -31,7 +31,7 @@ test("timestamps across daylight-saving offset changes use elapsed days rather t
  assert.equal(now-atBoundary,7*DAY);
  assert.deepEqual(ids(reportEvidence([answer("included",atBoundary),answer("older-hour",before)],"all","all","7",now)),["included"]);
 });
-import {progressTrend, TREND_WINDOW} from "../src/reporting";
+import {progressTrend} from "../src/reporting";
 import {emptyData,deleteSession,restoreSession,type Session,type Data} from "../src/core";
 const trendAt=new Date(2026,9,10,12).getTime();
 const generalSession=(id:string,day=0,minutes=1):Session=>({id,startedAt:trendAt+day*DAY,endedAt:trendAt+day*DAY+minutes*60000,mode:"card-number",duration:minutes*60000,answerFormat:"direct-recall"});
@@ -55,22 +55,22 @@ test("short sessions pool answers by day, with answer-weighted medians rather th
  assert.deepEqual(trend.points,joined.points);
 });
 
-test("daily points use the most recent 100 answers and respond proportionally to later regression",()=>{
+test("daily points include every answer, including slower late-day practice, without carrying other days",()=>{
  const old=generalSession("old"),current=generalSession("current",1),regression=generalSession("regression",2);
- const raw=[...trendAnswers(old,100,{firstCorrect:false,wrong:1}),...trendAnswers(current,100,{elapsedMs:2000}),...trendAnswers(regression,20,{firstCorrect:false,wrong:1})];
+ const raw=[...trendAnswers(old,100,{firstCorrect:false,wrong:1}),...trendAnswers(current,200).map((a,i)=>({...a,elapsedMs:i<100?2000:8000})),...trendAnswers(regression,20,{firstCorrect:false,wrong:1})];
  const trend=progressTrend([old,current,regression],raw,"direct-recall");
  assert.equal(trend.points.length,3);
- assert.equal(trend.points[1].stats.eligibleTotal,TREND_WINDOW);assert.equal(trend.points[1].stats.accuracy,100);assert.equal(trend.points[1].from,current.startedAt);
- assert.equal(trend.points[2].stats.accuracy,80);assert.equal(trend.points[2].stats.medianMs,2000);
+ assert.equal(trend.points[1].stats.eligibleTotal,200);assert.equal(trend.points[1].stats.medianMs,5000);assert.equal(trend.points[1].stats.accuracy,100);assert.equal(trend.points[1].from,current.startedAt);
+ assert.equal(trend.points[2].stats.accuracy,0);assert.equal(trend.points[2].stats.medianMs,null);
 });
 
-test("trend waits for 20 eligible answers across 10 mappings and enough correct timing evidence",()=>{
+test("small-sample days still count and flag limited mapping or timing evidence",()=>{
  const s=generalSession("warmup");
- assert.equal(progressTrend([s],trendAnswers(s,19),"direct-recall").points.length,0);
- assert.equal(progressTrend([s],trendAnswers(s,20).map(a=>({...a,position:1})),"direct-recall").points.length,0);
+ assert.equal(progressTrend([s],trendAnswers(s,19),"direct-recall").points[0].lowSample,true);
+ assert.equal(progressTrend([s],trendAnswers(s,20).map(a=>({...a,position:1})),"direct-recall").points[0].lowSample,true);
  assert.equal(progressTrend([s],trendAnswers(s,20).map((a,i)=>({...a,position:i%10+1})),"direct-recall").points.length,1);
  const few=trendAnswers(s,20).map((a,i)=>({...a,firstCorrect:i<4,wrong:i<4?0:1}));
- const point=progressTrend([s],few,"direct-recall").points[0];assert.equal(point.stats.accuracy,20);assert.equal(point.stats.medianMs,null);
+ const point=progressTrend([s],few,"direct-recall").points[0];assert.equal(point.stats.accuracy,20);assert.equal(point.stats.medianMs,1000);assert.equal(point.timingLowSample,true);
  const enough=few.map((a,i)=>i===4?{...a,firstCorrect:true,wrong:0}:a);
  assert.equal(progressTrend([s],enough,"direct-recall").points[0].stats.medianMs,1000);
 });
@@ -96,10 +96,10 @@ test("trend formats and selected date/direction evidence remain separate, includ
  assert.equal(progressTrend(sessions,reportEvidence(raw,"all","all","7",trendAt+10*DAY),"direct-recall").points.length,0);
 });
 
-test("daily snapshots respect local calendar days and display limits retain earlier rolling context",()=>{
+test("daily snapshots respect local calendar days and do not blend days",()=>{
  const first=generalSession("morning"),evening={...generalSession("evening"),startedAt:new Date(2026,9,10,23).getTime()},next=generalSession("tomorrow",1);
  const trend=progressTrend([first,evening,next],[...trendAnswers(first,10),...trendAnswers(evening,10),...trendAnswers(next,10)],"direct-recall",1);
- assert.equal(trend.points.length,1);assert.equal(trend.points[0].stats.eligibleTotal,30);assert.equal(trend.points[0].from,first.startedAt);assert.equal(trend.points[0].at,next.startedAt+9000);
+ assert.equal(trend.points.length,1);assert.equal(trend.points[0].stats.eligibleTotal,10);assert.equal(trend.points[0].from,next.startedAt);assert.equal(trend.points[0].at,next.startedAt+9000);
 });
 
 test("deleting and restoring a general session recomputes the trend without a stored metric migration",()=>{

@@ -193,3 +193,8 @@ details.report-section{margin-top:18px}details.report-section>summary{min-height
 .progress-trend .chart-title>span{font-size:13px;color:#c1d2e8}.progress-trend small{font-size:10px;color:var(--muted)}
 .progress-trend .trend-note{font-size:11px;line-height:1.6;color:var(--muted);margin:10px 0}.progress-trend td:first-child{min-width:105px}
 .trend-legend .target-key{color:#9aabc6}.trend-legend .target-key:before{border-color:#9aabc6;border-top-style:dashed}
+
+.benchmark-start{display:block;width:100%;min-height:44px;margin-top:6px}.recheck-panel{display:grid;gap:8px;margin:16px 0;padding:14px;border:1px solid var(--line);border-radius:14px;background:var(--paper)}
+.recheck-panel button{width:100%;min-height:44px}.recheck-panel small{font-size:11px;line-height:1.5;color:var(--muted);text-align:center;margin-bottom:6px}
+.confusion-row{display:flex;align-items:center;gap:10px;padding:12px 0;border-bottom:1px solid var(--line);font-size:12px}.confusion-row>span{flex:1;min-width:0}.confusion-row small{display:block;color:var(--muted);font-size:10px;line-height:1.7;margin-top:4px}.confusion-row button{min-height:44px;font-size:11px;flex-shrink:0}
+.weakest-panel>.selector{margin-top:12px}.guide-section{border-bottom:1px solid var(--line);padding:5px 0}.guide-section summary{cursor:pointer;min-height:44px;padding:12px 0;font-size:14px}.guide-section p{font-size:13px;line-height:1.75;color:#c1d2e8}

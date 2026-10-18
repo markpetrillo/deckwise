@@ -1,4 +1,4 @@
-import {formatOf, isSequence, RANKS, SUITS, type AnswerFormat, type Data, type Direction, type SequenceDirection} from "./core";
+import {formatOf, isSequence, validSubmissions, type Submission, RANKS, SUITS, type AnswerFormat, type Data, type Direction, type SequenceDirection} from "./core";
 import {focusPrompt} from "./focus";
 import {type RecallInput} from "./recall";
 import {type CardSort} from "./reporting";
@@ -7,6 +7,7 @@ export const UI_STORE = "deckwise.ui.v1";
 export type View = "deck" | "practice" | "progress" | "settings";
 export type ReportFilter = "all" | "card-number" | "number-card" | "sequence" | SequenceDirection;
 export interface QuestionState {
+  submissions?:Submission[];
   id: string; answerFormat: AnswerFormat; input: RecallInput; position: number; direction: Direction;
   options: number[]; elapsed: number; wrong: number; lastIncorrect: string;
   hint: boolean; revealed: boolean; interrupted: boolean; firstMs: number | null;
@@ -84,7 +85,7 @@ function validResume(value: unknown, data: Data): value is ResumeState {
   const q = value.question;
   if (!session || !object(q) || typeof q.id !== "string" || !q.id || !position(q.position) ||
       !["card-number","number-card","sequence-forward","sequence-backward"].includes(String(q.direction)) ||
-      (!session.focus && session.mode !== "mixed" && q.direction !== session.mode) || q.answerFormat !== formatOf(session) ||
+      (!session.focus && !session.benchmark && session.mode !== "mixed" && q.direction !== session.mode) || q.answerFormat !== formatOf(session) ||
       !number(q.elapsed) || q.elapsed > value.elapsed || !Number.isInteger(q.wrong) || Number(q.wrong) < 0 ||
       typeof q.lastIncorrect !== "string" || q.lastIncorrect.length > 100 ||
       !["hint","revealed","interrupted","done","exposed"].every(k => typeof q[k] === "boolean") ||
@@ -99,6 +100,7 @@ function validResume(value: unknown, data: Data): value is ResumeState {
       typeof q.input.suit !== "string" || q.input.suit !== "" && !Object.hasOwn(SUITS,q.input.suit) ||
       q.done !== q.revealed || q.firstCorrect === true) return false;
   if (q.answerFormat === "multiple-choice" ? q.options.length !== 5 || !q.options.includes(q.position) : q.options.length !== 0) return false;
+  if(q.submissions!==undefined && (!validSubmissions(q.submissions) || q.submissions.length!==q.selected.length || q.submissions.some((s,i)=>s.position!==(q.selected as number[])[i])))return false;
   const answers = data.attempts.filter(a => a.sessionId === session.id);
   const attempt = answers.find(a => a.id === q.id);
   if (q.firstCorrect === null) {
@@ -107,10 +109,14 @@ function validResume(value: unknown, data: Data): value is ResumeState {
       attempt.firstCorrect !== q.firstCorrect || attempt.elapsedMs !== q.firstMs || attempt.wrong !== q.wrong ||
       attempt.hint !== q.hint || attempt.revealed !== q.revealed || attempt.interrupted && !q.interrupted ||
       attempt.recentExposure !== q.exposed) return false;
+  if(attempt && JSON.stringify(attempt.submissions)!==JSON.stringify(q.submissions))return false;
   if (answers.some(a => a.id !== q.id && a.at > Number(value.savedAt)) || value.savedAt < session.startedAt) return false;
   if (session.focus) {
     const completed=answers.filter(a=>a.id!==q.id).length,expected=focusPrompt(session.focus,completed);
     if(completed>=session.focus.target||q.position!==expected.position||q.direction!==expected.direction||value.elapsed<session.focus.elapsedMs)return false;
+  } else if(session.benchmark){
+    const completed=answers.filter(a=>a.id!==q.id).length,expected=session.benchmark.mappings[completed];
+    if(!expected || expected.position!==q.position || expected.direction!==q.direction || value.elapsed<session.benchmark.elapsedMs)return false;
   } else if (session.runTarget) {
     const previous = answers.filter(a => a.id !== q.id);
     const expected = previous.length ? ((previous.at(-1)!.position-1+(session.mode === "sequence-forward" ? 1 : -1)+52)%52)+1 : session.startPosition;

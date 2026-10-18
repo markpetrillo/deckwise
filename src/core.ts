@@ -38,7 +38,9 @@ export const cardName = (position: number) =>
   `${names[STACK[position - 1][0]]} of ${SUITS[STACK[position - 1][1]]}`;
 export const key = (position: number, direction: Direction, format: AnswerFormat = "multiple-choice") =>
   `${format === "direct-recall" ? "direct-recall:" : ""}${direction}:${position}`;
+export interface Submission {position:number; at:number; elapsedMs:number}
 export interface Attempt {
+  submissions?:Submission[];
   answerFormat?: AnswerFormat;
   id: string;
   sessionId: string;
@@ -57,9 +59,12 @@ export interface Attempt {
   finalElapsedMs?: number;
 }
 export interface FocusMapping {position:number; direction:Direction}
-export interface FocusPlan {mappings:FocusMapping[]; target:number; elapsedMs:number; completed:boolean}
+export interface FocusPlan {mappings:FocusMapping[]; target:number; elapsedMs:number; completed:boolean; kind?:"weakest"|"recheck"|"confusion"; passes?:1|3; sourceSessionId?:string; recheckStage?:"later"|"next-day"}
+export interface BenchmarkPlan {mappings:FocusMapping[]; elapsedMs:number; completed:boolean}
+export const sessionTarget=(s:Session)=>s.runTarget ?? s.focus?.target ?? s.benchmark?.mappings.length;
 export interface Session {
   focus?: FocusPlan;
+  benchmark?:BenchmarkPlan;
   answerFormat?: AnswerFormat;
   id: string;
   startedAt: number;
@@ -90,6 +95,7 @@ export interface Data {
     speedTarget: number;
     speedAdaptive: boolean;
     statsPeriod?: "7" | "30" | "all";
+    focusSize?:5|6|8;
     answerFormat?: AnswerFormat;
     sequenceAnswerFormat?: AnswerFormat;
   };
@@ -250,6 +256,7 @@ export function updateAttempt(data: Data, attempt: Attempt): void {
   existing.revealed = attempt.revealed;
   existing.finalResult = attempt.finalResult;
   existing.finalElapsedMs = attempt.finalElapsedMs;
+  if(attempt.submissions!==undefined)existing.submissions=attempt.submissions.map(s=>({...s}));
 }
 /** Rebuild the scheduler from currently included evidence. Deleted evidence stays out. */
 function rebuildMemory(data: Data) {
@@ -361,6 +368,11 @@ export function summary(attempts: Attempt[]) {
     recent: attempts.filter((a) => a.recentExposure).length,
   };
 }
+export function validSubmissions(value:unknown):value is Submission[] {
+  return Array.isArray(value) && value.length<=52 && new Set(value.map(s=>s?.position)).size===value.length && value.every((s,i)=>
+    s && Number.isInteger(s.position) && s.position>=1 && s.position<=52 && Number.isFinite(s.at) && s.at>=0 &&
+    Number.isFinite(s.elapsedMs) && s.elapsedMs>=0 && (!i || s.at>=value[i-1].at && s.elapsedMs>=value[i-1].elapsedMs));
+}
 export function validate(raw: unknown): Data {
   if (!raw || typeof raw !== "object")
     throw Error("This is not a Deckwise backup.");
@@ -389,8 +401,10 @@ export function validate(raw: unknown): Data {
   )
     throw Error("Unsupported or damaged backup.");
   const validFormat = (v: unknown) => v === undefined || v === "multiple-choice" || v === "direct-recall";
+  if(d.settings.focusSize!==undefined && ![5,6,8].includes(d.settings.focusSize))throw Error("Invalid drill size.");
   if (!validFormat(d.settings.answerFormat) || !validFormat(d.settings.sequenceAnswerFormat)) throw Error("Invalid answer format.");
   const sessionFormats = new Map<string,AnswerFormat>();
+  const benchmarkOffsets=new Map<string,number>();
   const sessionIds = new Set<string>(),
     attemptIds = new Set<string>();
   for (const s of d.sessions) {
@@ -408,14 +422,28 @@ export function validate(raw: unknown): Data {
       throw Error("Invalid session history.");
     if (s.focus !== undefined) {
       const f=s.focus;
-      if (!f || s.runTarget !== undefined || !Array.isArray(f.mappings) || f.mappings.length<1 || f.mappings.length>5 ||
+      if (!f || s.runTarget !== undefined || !Array.isArray(f.mappings) || f.mappings.length<1 || f.mappings.length>8 ||
           f.mappings.some(m=>!m || !Number.isInteger(m.position) || m.position<1 || m.position>52 ||
             !["card-number","number-card","sequence-forward","sequence-backward"].includes(m.direction) || isSequence(m.direction)!==isSequence(s.mode)) ||
           new Set(f.mappings.map(m=>m.direction+":"+m.position)).size!==f.mappings.length ||
-          f.target!==f.mappings.length*3 || !finite(f.elapsedMs) || typeof f.completed!=="boolean") throw Error("Invalid focused drill.");
+          f.target!==f.mappings.length*(f.passes??3) || !finite(f.elapsedMs) || typeof f.completed!=="boolean") throw Error("Invalid focused drill.");
+    }
+    if(s.focus){const f=s.focus;
+      if(f.kind!==undefined && !["weakest","recheck","confusion"].includes(f.kind) || f.passes!==undefined && ![1,3].includes(f.passes))throw Error("Invalid drill kind.");
+      if(f.kind==="recheck" ? f.passes!==1 || typeof f.sourceSessionId!=="string" || !f.sourceSessionId || !["later","next-day"].includes(f.recheckStage??"") : f.sourceSessionId!==undefined || f.recheckStage!==undefined || f.passes===1)throw Error("Invalid recheck metadata.");
+    }
+    if(s.benchmark!==undefined){const b=s.benchmark;
+      const dirs=s.mode==="mixed"?["card-number","number-card"]:[s.mode];
+      if(!b || s.focus || s.runTarget || isSequence(s.mode) || !Array.isArray(b.mappings) || b.mappings.length!==dirs.length*52 ||
+        b.mappings.some(m=>!m || !Number.isInteger(m.position) || m.position<1 || m.position>52 || !dirs.includes(m.direction)) ||
+        new Set(b.mappings.map(m=>m.direction+":"+m.position)).size!==b.mappings.length || !finite(b.elapsedMs) || typeof b.completed!=="boolean")throw Error("Invalid benchmark.");
     }
     sessionIds.add(s.id);
     sessionFormats.set(s.id,formatOf(s));
+  }
+  for(const s of d.sessions)if(s.focus?.kind==="recheck"){
+    const source=d.sessions.find(x=>x.id===s.focus!.sourceSessionId);
+    if(source && (!source.focus || source.focus.kind==="recheck" || formatOf(source)!==formatOf(s) || s.focus.mappings.some(m=>!source.focus!.mappings.some(p=>p.position===m.position&&p.direction===m.direction))))throw Error("Invalid recheck source.");
   }
   for (const a of d.attempts) {
     if (
@@ -450,8 +478,20 @@ export function validate(raw: unknown): Data {
       throw Error("Invalid attempt history.");
     const session=d.sessions.find(s=>s.id===a.sessionId)!;
     if (session.focus && !session.focus.mappings.some(m=>m.position===a.position && m.direction===a.direction)) throw Error("Answer outside focused drill.");
+    if(a.submissions!==undefined){
+      if(!validSubmissions(a.submissions) || a.submissions.filter(s=>s.position!==a.position).length!==a.wrong ||
+        a.submissions.length>0 && (a.submissions[0].position===a.position)!==a.firstCorrect ||
+        a.submissions.some((s,i)=>s.position===a.position && i!==a.submissions!.length-1))throw Error("Invalid submitted answers.");
+    }
+    if(session.benchmark){
+      const offset=benchmarkOffsets.get(a.sessionId)??0;
+      const expected=session.benchmark.mappings[offset];
+      benchmarkOffsets.set(a.sessionId,offset+1);
+      if(!expected || expected.position!==a.position || expected.direction!==a.direction)throw Error("Answer outside benchmark order.");
+    }
     attemptIds.add(a.id);
   }
+  for(const s of d.sessions)if(s.benchmark?.completed && (s.endedAt===null || benchmarkOffsets.get(s.id)!==s.benchmark.mappings.length))throw Error("Incomplete benchmark marked complete.");
   for (const [k, m] of Object.entries(d.memory)) {
     if (
       !/^(direct-recall:)?(card-number|number-card|sequence-forward|sequence-backward):([1-9]|[1-4][0-9]|5[0-2])$/.test(k) ||

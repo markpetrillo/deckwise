@@ -32,13 +32,17 @@ import {
   type Attempt,
   type Session,
   type FocusMapping,
+  type FocusPlan,
+  sessionTarget,
 } from "./core";
 import { emptyRecallInput, editRecallInput, recallPosition, recallDisplay, type RecallInput, type RecallAction } from "./recall";
 import { cardImage, numberCard } from "./cards";
 import {UI_STORE, loadUiState, type UiState, type QuestionState, type View, type ReportFilter} from "./ui-state";
 import {weakestMappings,focusPrompt} from "./focus";
+import {rechecks,benchmarkMappings,confusionPairs,benchmarkResult} from "./learning";
+import {learningGuide} from "./learning-guide";
 import { uiIcon } from "./icons";
-import { progressTrend, TREND_WINDOW, TREND_MIN_ANSWERS, TREND_MIN_MAPPINGS, directionComparison, reportEvidence, cardRanking, mappingInsights, type CardSort, sequenceRuns } from "./reporting";
+import { progressTrend, directionComparison, reportEvidence, cardRanking, mappingInsights, type CardSort, sequenceRuns } from "./reporting";
 const app = document.querySelector<HTMLDivElement>("#app")!;
 const STORE = "deckwise.v1";
 let storageProblem = "";
@@ -189,12 +193,12 @@ function selector(options: readonly (readonly [string,string])[], value:string, 
 function practiceSetup() {
   const type=selector([["position","Position practice"],["sequence","Sequence quiz"]],practiceType,"practice-type","Quiz type");
   if(practiceType==="sequence") {
-    chrome(`<section class="selection-panel practice-home">${type}${selector([["sequence-forward","Forward"],["sequence-backward","Backward"]],sequenceDirection,"sequence-direction","Sequence direction")}${formatToggle(data.settings.sequenceAnswerFormat??"multiple-choice","sequence")}${selector([["beginning","From "+(sequenceDirection==="sequence-forward"?"first card":"last card")],["random","Random start"]],sequenceStart,"sequence-start","Starting position")}<button class="primary start" data-action="start-sequence" ${storageProblem?"disabled":""}>Start 52-card run</button></section>`);
+    chrome(`<section class="selection-panel practice-home">${type}${selector([["sequence-forward","Forward"],["sequence-backward","Backward"]],sequenceDirection,"sequence-direction","Sequence direction")}${formatToggle(data.settings.sequenceAnswerFormat??"multiple-choice","sequence")}${selector([["beginning","From "+(sequenceDirection==="sequence-forward"?"first card":"last card")],["random","Random start"]],sequenceStart,"sequence-start","Starting position")}<button class="primary start" data-action="start-sequence" ${storageProblem?"disabled":""}>Start 52-card run</button></section>${practiceRechecks()}`);
     return;
   }
   const format=formatOf(data.settings);
   const due=STACK.reduce((n,_,i)=>n+(["card-number","number-card"] as const).filter(dir=>(data.settings.mode==="mixed"||dir===data.settings.mode)&&(data.memory[key(i+1,dir,format)]?.due??Infinity)<=Date.now()).length,0);
-  chrome(`<section class="selection-panel practice-home">${type}${selector([["mixed","Mixed"],["card-number","Card → number"],["number-card","Number → card"]],data.settings.mode,"mode","Practice direction")}${formatToggle(format,"practice")}${selector([["1","1 min"],["3","3 min"],["5","5 min"],["10","10 min"]],String(data.settings.minutes),"minutes","Session length")}<button class="primary start" data-action="start" ${storageProblem?"disabled":""}>Start ${data.settings.minutes}-minute session</button>${due?`<span class="quiet-count">${due} due</span>`:""}</section>`);
+  chrome(`<section class="selection-panel practice-home">${type}${selector([["mixed","Mixed"],["card-number","Card → number"],["number-card","Number → card"]],data.settings.mode,"mode","Practice direction")}${formatToggle(format,"practice")}${selector([["1","1 min"],["3","3 min"],["5","5 min"],["10","10 min"]],String(data.settings.minutes),"minutes","Session length")}<button class="primary start" data-action="start" ${storageProblem?"disabled":""}>Start ${data.settings.minutes}-minute session</button>${due?`<span class="quiet-count">${due} due</span>`:""}<button class="secondary benchmark-start" data-action="start-benchmark" ${storageProblem?"disabled":""}>Benchmark · ${data.settings.mode==="mixed"?104:52} prompts</button></section>${practiceRechecks()}`);
 }
 function practice() {
   if(!active){practiceSetup();return;}
@@ -216,7 +220,7 @@ function practice() {
         ? ""
         : "";
   chrome(
-    `<section class="session-top ${q.answerFormat === "direct-recall" ? "direct-session" : ""}"><div><span class="eyebrow">${isSequence(q.direction) && !active.focus && sequenceSource === 0 ? sequenceStart === "random" ? `Choose position ${q.position}` : q.direction === "sequence-forward" ? "Choose the first card" : "Choose the last card" : modeName(q.direction)}</span>${active.focus?`<span class="sequence-position">Drill ${active.focus.mappings.length} · ${stats.total-(data.attempts.some(a=>a.id===q!.id)?1:0)+1}/${active.focus.target} · ${formatName(q.answerFormat)}</span>`:isSequence(q.direction) ? `<span class="sequence-position">${stats.total - (data.attempts.some(a => a.id === q!.id) ? 1 : 0) + 1} / 52 · ${formatName(q.answerFormat)}</span>` : `<span class="answer-format-label">${formatName(q.answerFormat)}</span>`}</div><div class="session-controls"><button class="session-timer" data-action="pause" aria-label="${paused ? "Resume" : "Pause"} practice"><span id="remaining">${(active.runTarget||active.focus) ? runTime(sessionElapsed) : timer(active.duration - sessionElapsed)}</span><span>${paused ? "▶ Resume" : "Ⅱ Pause"}</span></button><button class="text-button end-session" data-action="finish">End session</button></div></section><div class="session-progress"><span id="session-bar" style="width:${(active.runTarget||active.focus) ? data.attempts.filter(a => a.sessionId === active!.id && (a.id !== q?.id || q.done)).length / (active.runTarget??active.focus!.target) * 100 : Math.min(100, (sessionElapsed / active.duration) * 100)}%"></span></div><div class="question-stage ${paused ? "paused" : ""} ${q.answerFormat === "direct-recall" ? "direct-stage" : ""} ${isSequence(q.direction) ? "sequence-stage" : ""}">${questionPrompt()}</div><div class="feedback ${q.done ? "positive" : q.wrong ? "negative" : ""}" role="status" aria-live="polite">${paused ? "Paused" : result}</div>${answerControls()}<div class="practice-actions">${q.done ? q.revealed ? `<button class="primary next" data-action="next" ${paused ? "disabled" : ""}>Next card <span>→</span></button>` : `<span class="next-status">${paused ? "Resume to continue" : "Next card…"}</span>` : `${isSequence(q.direction) ? "" : `<button class="text-button" data-action="hint" ${paused ? "disabled" : ""}>☼ Neighbor hint</button>`}<button class="text-button" data-action="reveal" ${paused ? "disabled" : ""}>Reveal answer</button>`}</div>${q.hint && !q.done ? `<div class="hint-panel">${q.position > 1 ? `<div><span>Before</span>${cardImage(q.position - 1)}</div>` : "<span>Top of deck</span>"}${q.position < 52 ? `<div><span>After</span>${cardImage(q.position + 1)}</div>` : "<span>Bottom of deck</span>"}</div>` : ""}<div class="session-bottom"><span>${stats.total} answered · ${isSequence(q.direction) ? sequenceResult(active, data.attempts).accuracy.toFixed(0) + "% first try" : (stats.eligibleTotal ? stats.accuracy.toFixed(0) + "%" : "—") + " independent"}</span></div>`,
+    `<section class="session-top ${q.answerFormat === "direct-recall" ? "direct-session" : ""}"><div><span class="eyebrow">${isSequence(q.direction) && !active.focus && sequenceSource === 0 ? sequenceStart === "random" ? `Choose position ${q.position}` : q.direction === "sequence-forward" ? "Choose the first card" : "Choose the last card" : modeName(q.direction)}</span>${active.benchmark?`<span class="sequence-position">Benchmark · ${stats.total-(data.attempts.some(a=>a.id===q!.id)?1:0)+1}/${active.benchmark.mappings.length} · ${formatName(q.answerFormat)}</span>`:active.focus?`<span class="sequence-position">${active.focus.kind==="recheck"?"Recheck":"Drill"} ${active.focus.mappings.length} · ${stats.total-(data.attempts.some(a=>a.id===q!.id)?1:0)+1}/${active.focus.target} · ${formatName(q.answerFormat)}</span>`:isSequence(q.direction) ? `<span class="sequence-position">${stats.total - (data.attempts.some(a => a.id === q!.id) ? 1 : 0) + 1} / 52 · ${formatName(q.answerFormat)}</span>` : `<span class="answer-format-label">${formatName(q.answerFormat)}</span>`}</div><div class="session-controls"><button class="session-timer" data-action="pause" aria-label="${paused ? "Resume" : "Pause"} practice"><span id="remaining">${(sessionTarget(active)!==undefined) ? runTime(sessionElapsed) : timer(active.duration - sessionElapsed)}</span><span>${paused ? "▶ Resume" : "Ⅱ Pause"}</span></button><button class="text-button end-session" data-action="finish">End session</button></div></section><div class="session-progress"><span id="session-bar" style="width:${(sessionTarget(active)!==undefined) ? data.attempts.filter(a => a.sessionId === active!.id && (a.id !== q?.id || q.done)).length / sessionTarget(active)! * 100 : Math.min(100, (sessionElapsed / active.duration) * 100)}%"></span></div><div class="question-stage ${paused ? "paused" : ""} ${q.answerFormat === "direct-recall" ? "direct-stage" : ""} ${isSequence(q.direction) ? "sequence-stage" : ""}">${questionPrompt()}</div><div class="feedback ${q.done ? "positive" : q.wrong ? "negative" : ""}" role="status" aria-live="polite">${paused ? "Paused" : result}</div>${answerControls()}<div class="practice-actions">${q.done ? q.revealed ? `<button class="primary next" data-action="next" ${paused ? "disabled" : ""}>Next card <span>→</span></button>` : `<span class="next-status">${paused ? "Resume to continue" : "Next card…"}</span>` : `${isSequence(q.direction) ? "" : `<button class="text-button" data-action="hint" ${paused ? "disabled" : ""}>☼ Neighbor hint</button>`}<button class="text-button" data-action="reveal" ${paused ? "disabled" : ""}>Reveal answer</button>`}</div>${q.hint && !q.done ? `<div class="hint-panel">${q.position > 1 ? `<div><span>Before</span>${cardImage(q.position - 1)}</div>` : "<span>Top of deck</span>"}${q.position < 52 ? `<div><span>After</span>${cardImage(q.position + 1)}</div>` : "<span>Bottom of deck</span>"}</div>` : ""}<div class="session-bottom"><span>${stats.total} answered · ${isSequence(q.direction) ? sequenceResult(active, data.attempts).accuracy.toFixed(0) + "% first try" : (stats.eligibleTotal ? stats.accuracy.toFixed(0) + "%" : "—") + " independent"}</span></div>`,
   );
 }
 function questionPrompt() {
@@ -282,10 +286,9 @@ function submitRecall() {
 
 function newQuestion() {
  const answered=data.attempts.filter(a=>a.sessionId===active?.id).length;
- if(active?.focus&&q?.done&&answered>=active.focus.target){finish(true);return;}
- if(active?.runTarget&&q?.done&&answered>=active.runTarget){finish(true);return;}
+ if(active&&q?.done&&sessionTarget(active)!==undefined&&answered>=sessionTarget(active)!){finish(true);return;}
  if(active&&isSequence(active.mode)&&q)sequenceSource=q.position;
- const focused=active?.focus?focusPrompt(active.focus,answered):null;
+ const focused=active?.focus?focusPrompt(active.focus,answered):active?.benchmark?.mappings[answered]??null;
  const direction:Direction=focused?.direction??(active&&isSequence(active.mode)?active.mode as SequenceDirection:data.settings.mode==="mixed"?mixedDirection(data.attempts.filter(a=>a.sessionId===active?.id)):data.settings.mode);
  const position=focused?.position??(isSequence(direction)?sequenceSource===0?active!.startPosition!:sequenceNeighbor(sequenceSource,direction as SequenceDirection):choose(data,direction,recent,Date.now(),Math.random,formatOf(active!)));
  if(focused&&isSequence(direction)){
@@ -313,6 +316,7 @@ function newQuestion() {
     done: false,
     exposed,
     selected: [],
+    submissions:[],
   };
   lastTick = performance.now();
   render();
@@ -323,7 +327,7 @@ function startSequence() {
   sequenceSource = 0;
   start(sequenceDirection, startPosition);
 }
-function start(mode: Mode = data.settings.mode, startPosition = 1, focus?:FocusMapping[], answerFormat?:AnswerFormat) {
+function start(mode: Mode = data.settings.mode, startPosition = 1, focus?:FocusMapping[], answerFormat?:AnswerFormat, details?:Pick<FocusPlan,"kind"|"passes"|"sourceSessionId"|"recheckStage">, benchmark?:FocusMapping[]) {
   if (storageProblem) return;
   view="practice";practiceType=isSequence(mode)?"sequence":"position";
   active = {
@@ -332,8 +336,8 @@ function start(mode: Mode = data.settings.mode, startPosition = 1, focus?:FocusM
     endedAt: null,
     mode,
     answerFormat: answerFormat??(isSequence(mode) ? data.settings.sequenceAnswerFormat ?? "multiple-choice" : formatOf(data.settings)),
-    duration: focus||isSequence(mode) ? 0 : data.settings.minutes * 60000,
-    ...(focus?{focus:{mappings:focus,target:focus.length*3,elapsedMs:0,completed:false}}:isSequence(mode) ? {runTarget:52, startPosition, elapsedMs:0, completed:false} : {}),
+    duration: focus||benchmark||isSequence(mode) ? 0 : data.settings.minutes * 60000,
+    ...(focus?{focus:{mappings:focus,target:focus.length*(details?.passes??3),elapsedMs:0,completed:false,...details}}:benchmark?{benchmark:{mappings:benchmark,elapsedMs:0,completed:false}}:isSequence(mode) ? {runTarget:52, startPosition, elapsedMs:0, completed:false} : {}),
   };
   data.sessions.push(active);
   sessionElapsed = 0;
@@ -347,6 +351,7 @@ function persistAttempt() {
   if (!q || !active || q.firstCorrect === null) return;
   if (active.runTarget) active.elapsedMs = sessionElapsed;
   if (active.focus) active.focus.elapsedMs = sessionElapsed;
+  if (active.benchmark) active.benchmark.elapsedMs = sessionElapsed;
   const a: Attempt = {
     id: q.id,
     sessionId: active.id,
@@ -361,6 +366,7 @@ function persistAttempt() {
     elapsedMs: q.firstMs,
     interrupted: q.interrupted,
     recentExposure: q.exposed,
+    ...(q.submissions!==undefined?{submissions:q.submissions.map(s=>({...s}))}:{}),
     finalResult: q.done ? q.revealed ? "revealed" : q.wrong ? "corrected" : "correct" : "unresolved",
     ...(q.done ? {finalElapsedMs:q.elapsed} : {}),
   };
@@ -373,6 +379,7 @@ function answer(p: number) {
   tick();
   if (paused || !q) return;
   q.selected.push(p);
+  q.submissions?.push({position:p,at:Date.now(),elapsedMs:q.elapsed});
   if (q.firstCorrect === null) {
     q.firstCorrect = p === q.position;
     q.firstMs = q.elapsed;
@@ -415,6 +422,7 @@ function finish(completed = false) {
   active.endedAt = Date.now();
   if (active.runTarget) {active.elapsedMs = sessionElapsed; active.completed = completed;}
   if (active.focus) {active.focus.elapsedMs=sessionElapsed;active.focus.completed=completed;}
+  if(active.benchmark){active.benchmark.elapsedMs=sessionElapsed;active.benchmark.completed=completed;}
   save();
   active = null;
   q = null;
@@ -423,7 +431,11 @@ function finish(completed = false) {
     s = summary(attempts);
   render();
   if(session.focus){
-    showDialog(`<h2>${session.focus.completed?"Drill complete":"Drill ended"}</h2><p>${attempts.length}/${session.focus.target} · ${formatName(formatOf(session))} · ${runTime(sessionElapsed)}</p><div class="summary-grid"><div><strong>${s.eligibleTotal?s.accuracy.toFixed(0)+"%":"—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median recall</span></div><div><strong>${attempts.filter(a=>!a.firstCorrect).length}</strong><span>First misses</span></div><div><strong>${isSequence(session.mode)?runTime(sessionElapsed+attempts.reduce((n,a)=>n+a.wrong+(a.revealed?1:0),0)*5000):s.hints}</strong><span>${isSequence(session.mode)?"Scored time":"Hints"}</span></div></div><button class="primary" data-action="summary-progress">View progress →</button>`);return;
+    showDialog(`<h2>${session.focus.kind==="recheck"?session.focus.completed?"Recheck complete":"Recheck ended":session.focus.completed?"Drill complete":"Drill ended"}</h2><p>${attempts.length}/${session.focus.target} · ${formatName(formatOf(session))} · ${runTime(sessionElapsed)}</p><div class="summary-grid"><div><strong>${s.eligibleTotal?s.accuracy.toFixed(0)+"%":"—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median recall</span></div><div><strong>${attempts.filter(a=>!a.firstCorrect).length}</strong><span>First misses</span></div><div><strong>${isSequence(session.mode)?runTime(sessionElapsed+attempts.reduce((n,a)=>n+a.wrong+(a.revealed?1:0),0)*5000):s.hints}</strong><span>${isSequence(session.mode)?"Scored time":"Hints"}</span></div></div><button class="primary" data-action="summary-progress">View progress →</button>`);return;
+  }
+  if(session.benchmark){
+    const result=benchmarkResult(session,data.attempts),timed=attempts.filter(timingEligible);
+    showDialog(`<h2>${result.complete?"Benchmark complete":"Benchmark ended"}</h2><p>${result.total}/${result.target} · ${modeName(session.mode)} · ${formatName(formatOf(session))}</p><p class="muted">${s.eligibleTotal} eligible · ${s.timedCount} timed</p><div class="summary-grid"><div><strong>${s.eligibleTotal?s.accuracy.toFixed(0)+"%":"—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median recall</span></div><div><strong>${timed.length?Math.round(timed.filter(a=>a.elapsedMs!<=data.settings.speedTarget*1000).length/timed.length*100)+"%":"—"}</strong><span>Within ${data.settings.speedTarget}s</span></div><div><strong>${runTime(sessionElapsed)}</strong><span>Active time</span></div></div><button class="primary" data-action="summary-progress">View progress →</button>`);return;
   }
   if (session.runTarget) {
     showDialog(`${runResults(session)}<button class="primary" data-action="summary-progress">View progress →</button>`);
@@ -451,16 +463,18 @@ function tick() {
 setInterval(() => {
   tick();
   if (!active) return;
-  if (!active.runTarget && !active.focus && sessionElapsed >= active.duration) {
+  if (sessionTarget(active)===undefined && sessionElapsed >= active.duration) {
     finish();
     return;
   }
   const remain = document.querySelector("#remaining"),
     bar = document.querySelector<HTMLElement>("#session-bar");
-  if (remain) remain.textContent = (active.runTarget||active.focus) ? runTime(sessionElapsed) : timer(active.duration - sessionElapsed);
+  if (remain) remain.textContent = (sessionTarget(active)!==undefined) ? runTime(sessionElapsed) : timer(active.duration - sessionElapsed);
   if (bar)
-    bar.style.width = `${(active.runTarget||active.focus) ? data.attempts.filter(a => a.sessionId === active!.id && (a.id !== q?.id || q.done)).length / (active.runTarget??active.focus!.target) * 100 : Math.min(100, (sessionElapsed / active.duration) * 100)}%`;
+    bar.style.width = `${(sessionTarget(active)!==undefined) ? data.attempts.filter(a => a.sessionId === active!.id && (a.id !== q?.id || q.done)).length / sessionTarget(active)! * 100 : Math.min(100, (sessionElapsed / active.duration) * 100)}%`;
 }, 200);
+setInterval(()=>{if(!active && view==="practice" && !document.querySelector("dialog[open]"))render();},60000);
+
 document.addEventListener("visibilitychange", () => {
   if (active) {
     tick();
@@ -551,13 +565,17 @@ function resultsCoverage(attempts: Attempt[]) {
   return `<div class="results-coverage" aria-label="Results coverage">${attempts.length} of ${total} answers${first?` · ${esc(first)}${first===last?"":" – "+esc(last)}`:""}</div>`;
 }
 function trend(attempts: Attempt[]): string {
+  // Daily points use whole local days, including morning and late-night answers.
+  if(period!=="all"){
+    const start=new Date(Date.now());start.setHours(0,0,0,0);start.setDate(start.getDate()-(Number(period)-1));
+    attempts=filtered("all").filter(a=>a.at>=start.getTime());
+  }
   const formats:AnswerFormat[]=reportFormat==="all"?["direct-recall","multiple-choice"]:[reportFormat];
   const series=formats.map(format=>progressTrend(data.sessions,attempts,format)).filter(s=>s.count>0);
-  if(!series.length)return `<div class="chart progress-trend"><div class="chart-title"><span>General practice trend</span></div><p class="trend-note">Build a trend with ${TREND_MIN_ANSWERS} general-practice answers across ${TREND_MIN_MAPPINGS} mappings. Focused drills stay in your history.</p></div>`;
+  if(!series.length)return `<div class="chart progress-trend"><div class="chart-title"><span>General practice trend</span></div><p class="trend-note">No eligible general-practice answers in this view. Focused drills stay in your history.</p></div>`;
   return series.map(series=>{
     const {points}=series;
     const heading=`<div class="chart-title"><span>General practice trend</span><small>${formatName(series.format)}</small></div>`;
-    if(!points.length)return `<div class="chart progress-trend">${heading}<p class="trend-note">${series.count} eligible answers · ${series.mappings} mappings. The trend starts at ${TREND_MIN_ANSWERS} answers across ${TREND_MIN_MAPPINGS} mappings.</p></div>`;
     const latest=points.at(-1)!;
     const maxSeconds=Math.max(data.settings.speedTarget,Math.ceil(Math.max(...points.map(p=>(p.stats.medianMs??0)/1000))));
     const firstAt=points[0].at,lastAt=latest.at;
@@ -575,7 +593,7 @@ function trend(attempts: Attempt[]): string {
         gap=false;return point;
       }).join(" ");
     };
-    return `<div class="chart progress-trend">${heading}<div class="trend-legend"><span class="accuracy-key">Accuracy (%)</span><span class="speed-key">Median recall (sec)</span><span class="target-key">${data.settings.speedTarget}s target</span></div><svg viewBox="0 0 380 185" role="img" aria-label="Daily rolling general-practice accuracy and median correct recall time. Focused drills excluded. Exact rolling windows follow below."><text x="8" y="19" font-size="10" fill="#79b7ff">%</text><text x="350" y="19" font-size="10" fill="#d1b6ff">sec</text>${[0,50,100].map(n=>`<line x1="42" x2="338" y1="${accuracyY(n)}" y2="${accuracyY(n)}" stroke="#2c3e5a" stroke-dasharray="3 4"/><text x="30" y="${accuracyY(n)+3}" text-anchor="end" font-size="10" fill="#79b7ff">${n}</text><text x="350" y="${accuracyY(n)+3}" font-size="10" fill="#d1b6ff">${Number((maxSeconds*n/100).toFixed(1))}</text>`).join("")}<line class="speed-target-line" x1="42" x2="338" y1="${speedY(data.settings.speedTarget*1000)}" y2="${speedY(data.settings.speedTarget*1000)}" stroke="#9aabc6" stroke-dasharray="5 5"/><path d="${path("accuracy")}" fill="none" stroke="#79b7ff" stroke-width="2.5"/><path d="${path("speed")}" fill="none" stroke="#d1b6ff" stroke-width="2.5"/>${positioned.map(p=>`<circle cx="${p.x}" cy="${accuracyY(p.stats.accuracy)}" r="3.5" fill="#79b7ff"><title>${fullDate(p.at)}: ${p.stats.accuracy.toFixed(0)}% across ${p.stats.eligibleTotal} answers, ${p.mappings} mappings</title></circle>${p.stats.medianMs===null?"":`<circle cx="${p.x}" cy="${speedY(p.stats.medianMs)}" r="3.5" fill="#d1b6ff"><title>${fullDate(p.at)}: ${fmtTime(p.stats.medianMs)} median, ${p.stats.timedCount} timed answers</title></circle>`}`).join("")}<text x="${firstAt===lastAt?190:42}" y="171" text-anchor="${firstAt===lastAt?"middle":"start"}" font-size="10" fill="#9aabc6">${shortDate(firstAt)}</text>${firstAt===lastAt?"":`<text x="338" y="171" text-anchor="end" font-size="10" fill="#9aabc6">${shortDate(lastAt)}</text>`}</svg><p class="trend-note">Daily · up to ${TREND_WINDOW} eligible general-practice answers · drills excluded</p><details><summary>Rolling accuracy &amp; speed</summary><div class="table-wrap"><table><thead><tr><th>Through</th><th>Answers</th><th>Mappings</th><th>Accuracy</th><th>Median</th></tr></thead><tbody>${[...points].reverse().map(p=>`<tr><td>${fullDate(p.at)}<br/><small>From ${fullDate(p.from)}</small></td><td>${p.stats.eligibleTotal}<br/><small>${p.stats.timedCount} timed</small></td><td>${p.mappings}</td><td>${p.stats.accuracy.toFixed(0)}%</td><td>${fmtTime(p.stats.medianMs)}</td></tr>`).join("")}</tbody></table></div></details></div>`;
+    return `<div class="chart progress-trend">${heading}<div class="trend-legend"><span class="accuracy-key">Accuracy (%)</span><span class="speed-key">Median recall (sec)</span><span class="target-key">${data.settings.speedTarget}s target</span></div><svg viewBox="0 0 380 185" role="img" aria-label="Daily general-practice accuracy and median correct recall time. Focused drills excluded. All eligible answers from each day are included."><text x="8" y="19" font-size="10" fill="#79b7ff">%</text><text x="350" y="19" font-size="10" fill="#d1b6ff">sec</text>${[0,50,100].map(n=>`<line x1="42" x2="338" y1="${accuracyY(n)}" y2="${accuracyY(n)}" stroke="#2c3e5a" stroke-dasharray="3 4"/><text x="30" y="${accuracyY(n)+3}" text-anchor="end" font-size="10" fill="#79b7ff">${n}</text><text x="350" y="${accuracyY(n)+3}" font-size="10" fill="#d1b6ff">${Number((maxSeconds*n/100).toFixed(1))}</text>`).join("")}<line class="speed-target-line" x1="42" x2="338" y1="${speedY(data.settings.speedTarget*1000)}" y2="${speedY(data.settings.speedTarget*1000)}" stroke="#9aabc6" stroke-dasharray="5 5"/><path d="${path("accuracy")}" fill="none" stroke="#79b7ff" stroke-width="2.5"/><path d="${path("speed")}" fill="none" stroke="#d1b6ff" stroke-width="2.5"/>${positioned.map(p=>`<circle cx="${p.x}" cy="${accuracyY(p.stats.accuracy)}" r="3.5" opacity="${p.lowSample?0.5:1}" fill="#79b7ff"><title>${fullDate(p.at)}: ${p.stats.accuracy.toFixed(0)}% across ${p.stats.eligibleTotal} answers, ${p.mappings} mappings${p.lowSample?" · small sample":""}</title></circle>${p.stats.medianMs===null?"":`<circle cx="${p.x}" cy="${speedY(p.stats.medianMs)}" r="3.5" opacity="${p.timingLowSample?0.5:1}" fill="#d1b6ff"><title>${fullDate(p.at)}: ${fmtTime(p.stats.medianMs)} median, ${p.stats.timedCount} timed answers</title></circle>`}`).join("")}<text x="${firstAt===lastAt?190:42}" y="171" text-anchor="${firstAt===lastAt?"middle":"start"}" font-size="10" fill="#9aabc6">${shortDate(firstAt)}</text>${firstAt===lastAt?"":`<text x="338" y="171" text-anchor="end" font-size="10" fill="#9aabc6">${shortDate(lastAt)}</text>`}</svg><p class="trend-note">Whole-day totals · all eligible general-practice answers · drills excluded</p><details><summary>Daily accuracy &amp; speed</summary><div class="table-wrap"><table><thead><tr><th>Through</th><th>Answers</th><th>Mappings</th><th>Accuracy</th><th>Median</th></tr></thead><tbody>${[...points].reverse().map(p=>`<tr><td>${fullDate(p.at)}${p.lowSample?"<br/><small>Small sample</small>":""}</td><td>${p.stats.eligibleTotal}<br/><small>${p.stats.timedCount} timed</small></td><td>${p.mappings}</td><td>${p.stats.accuracy.toFixed(0)}%</td><td>${fmtTime(p.stats.medianMs)}</td></tr>`).join("")}</tbody></table></div></details></div>`;
   }).join("");
 }
 function runResults(session: Session) {
@@ -619,13 +637,13 @@ function directionInsights() {
 function weakestSet() {
  const directions:Direction[]=filter==="sequence"?["sequence-forward","sequence-backward"]:filter==="all"?["card-number","number-card"]:[filter as Direction];
  let format:AnswerFormat=reportAnswerFormat()==="all"?(filter.startsWith("sequence")?data.settings.sequenceAnswerFormat??"multiple-choice":formatOf(data.settings)):reportAnswerFormat() as AnswerFormat;
- const evidence=filtered();let mappings=weakestMappings(evidence,directions,format,data.settings.speedTarget);
- if(!mappings.length&&reportAnswerFormat()==="all"){format=format==="direct-recall"?"multiple-choice":"direct-recall";mappings=weakestMappings(evidence,directions,format,data.settings.speedTarget);}
+ const evidence=filtered();let mappings=weakestMappings(evidence,directions,format,data.settings.speedTarget,Date.now(),data.settings.focusSize??5);
+ if(!mappings.length&&reportAnswerFormat()==="all"){format=format==="direct-recall"?"multiple-choice":"direct-recall";mappings=weakestMappings(evidence,directions,format,data.settings.speedTarget,Date.now(),data.settings.focusSize??5);}
  return {format,mappings};
 }
 function needsWork() {
  const {format,mappings}=weakestSet();if(!mappings.length)return "";
- return `<section class="weakest-panel" aria-label="Needs work"><div class="weakest-list">${mappings.map(m=>`<button data-position="${m.position}" class="weakest-row"><span><strong>${m.direction==="card-number"?cardName(m.position):"Position "+m.position}</strong><small>${modeName(m.direction)}</small></span><span><strong>${m.model.category}</strong><small>${fmtTime(m.model.recent.medianMs)}</small></span></button>`).join("")}</div><button class="primary" data-action="drill-weakest" ${storageProblem?"disabled":""}>Drill weakest ${mappings.length}</button>${reportAnswerFormat()==="all"?`<span class="quiet-count">${formatName(format)}</span>`:""}</section>`;
+ return `<section class="weakest-panel" aria-label="Needs work">${selector([["5","5"],["6","6"],["8","8"]],String(data.settings.focusSize??5),"focus-size","Drill size")}<div class="weakest-list">${mappings.map(m=>`<button data-position="${m.position}" class="weakest-row"><span><strong>${m.direction==="card-number"?cardName(m.position):"Position "+m.position}</strong><small>${modeName(m.direction)}</small></span><span><strong>${m.model.category}</strong><small>${fmtTime(m.model.recent.medianMs)}</small></span></button>`).join("")}</div><button class="primary" data-action="drill-weakest" ${storageProblem?"disabled":""}>Drill weakest ${mappings.length}</button>${reportAnswerFormat()==="all"?`<span class="quiet-count">${formatName(format)}</span>`:""}</section>`;
 }
 function startFocus() {
  const {format,mappings}=weakestSet();if(!mappings.length)return;
@@ -635,11 +653,32 @@ function startFocus() {
  if(practiceType==="sequence")data.settings.sequenceAnswerFormat=format;else data.settings.answerFormat=format;
  start(mode,1,focus,format);
 }
+function practiceRechecks() {
+ const format=practiceType==="sequence"?data.settings.sequenceAnswerFormat??"multiple-choice":formatOf(data.settings);
+ const reviews=rechecks(data).filter(r=>r.format===format && isSequence(r.mappings[0].direction)===(practiceType==="sequence")).slice(0,3);
+ if(!reviews.length)return "";
+ return `<section class="recheck-panel" aria-label="Delayed rechecks">${reviews.map(r=>`<button class="secondary" data-recheck="${esc(r.sourceId)}" data-recheck-stage="${r.stage}" ${!r.ready||storageProblem?"disabled":""}>Recheck ${r.mappings.length} · ${r.stage==="later"?"30-minute":"Next-day"}</button><small>${new Set(r.mappings.map(m=>m.direction)).size>1?"Both directions":modeName(r.mappings[0].direction)} · ${r.ready?"Ready now":"Available "+esc(new Date(r.due).toLocaleString(undefined,{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}))}</small>`).join("")}</section>`;
+}
+function selectedConfusions() {
+ let format=reportAnswerFormat()==="all"?(filter.startsWith("sequence")?data.settings.sequenceAnswerFormat??"multiple-choice":formatOf(data.settings)):reportAnswerFormat() as AnswerFormat;
+ const evidence=filtered();let pairs=confusionPairs(evidence,format);
+ if(!pairs.length&&reportAnswerFormat()==="all"){format=format==="direct-recall"?"multiple-choice":"direct-recall";pairs=confusionPairs(evidence,format);}
+ return {format,pairs};
+}
+function confusionsPanel() {
+ const {format,pairs}=selectedConfusions();
+ return `<details class="report-section confusion-panel"><summary>Confusions${pairs.length?" ("+pairs.length+")":""}</summary>${pairs.length?pairs.slice(0,3).map((p,i)=>`<div class="confusion-row"><span>${p.positions.map(position=>esc(p.direction==="card-number"?cardName(position):"Position "+position)).join(" ↔ ")}<small>${modeName(p.direction)} · ${p.count} wrong submissions · ${formatName(format)}</small></span><button class="secondary" data-confusion="${i}">Practice pair</button></div>`).join(""):'<p class="muted">New wrong answers will appear here. Earlier guesses were not recorded.</p>'}</details>`;
+}
+function benchmarkHistory(attempts:Attempt[]) {
+ const ids=new Set(attempts.map(a=>a.sessionId)),sessions=data.sessions.filter(s=>s.benchmark&&ids.has(s.id)).slice(-10).reverse();
+ if(!sessions.length)return "";
+ return `<details class="report-section"><summary>Benchmarks (${sessions.length})</summary><div class="table-wrap"><table><thead><tr><th>Benchmark</th><th>Accuracy</th><th>Median</th></tr></thead><tbody>${sessions.map(s=>{const stats=summary(attempts.filter(a=>a.sessionId===s.id)),r=benchmarkResult(s,data.attempts);return `<tr><td>${fmtDate(s.startedAt)}<small>${modeName(s.mode)} · ${formatName(formatOf(s))}<br/>${r.total}/${r.target} · ${r.complete?"complete":"partial"}<br/>${stats.eligibleTotal} eligible · ${stats.timedCount} timed</small></td><td>${stats.eligibleTotal?stats.accuracy.toFixed(0)+"%":"—"}</td><td>${fmtTime(stats.medianMs)}</td></tr>`;}).join("")}</tbody></table></div></details>`;
+}
 function sessionDirectionName(s:Session) {
  return s.focus&&new Set(s.focus.mappings.map(m=>m.direction)).size>1?(isSequence(s.mode)?"Both sequence directions":"Mixed directions"):modeName(s.mode);
 }
 function sessionLabel(s:Session,count:number) {
- return s.focus?`Drill ${s.focus.mappings.length} · ${count}/${s.focus.target}`:s.runTarget?`${count}/52`:`${s.duration/60000} min · ${count} answered`;
+ return s.benchmark?`Benchmark · ${count}/${s.benchmark.mappings.length}`:s.focus?`${s.focus.kind==="recheck"?"Recheck":"Drill"} ${s.focus.mappings.length} · ${count}/${s.focus.target}`:s.runTarget?`${count}/52`:`${s.duration/60000} min · ${count} answered`;
 }
 function perCardResults(attempts:Attempt[]) {
  const sequence=filter.startsWith("sequence");
@@ -664,7 +703,7 @@ function progress() {
     .filter(session => (filter === "all" ? !isSequence(session.mode) : filter === "sequence" ? isSequence(session.mode) : session.mode === filter || session.focus?.mappings.some(m=>m.direction===filter) || (!isSequence(filter) && session.mode === "mixed")) &&
       (period === "all" || session.startedAt >= Date.now() - Number(period) * 86400000) && (reportAnswerFormat() === "all" || formatOf(session) === reportAnswerFormat()));
   chrome(
-    `<section class="progress-controls" aria-label="Progress filters"><div class="segmented quiz-type-toggle" role="group" aria-label="Quiz type">${[["position","Position practice"],["sequence","Sequence quiz"]].map(([id,label]) => `<button data-stats-type="${id}" aria-pressed="${(filter.startsWith("sequence") ? "sequence" : "position") === id}" class="${(filter.startsWith("sequence") ? "sequence" : "position") === id ? "selected" : ""}">${label}</button>`).join("")}</div><div class="segmented practice-toggle position-directions" role="group" aria-label="${filter.startsWith("sequence") ? "Sequence direction" : "Practice type"}">${(filter.startsWith("sequence") ? [["sequence-forward","Forward"],["sequence-backward","Backward"],["sequence","Combined"]] : [["all","Mixed"],["card-number","Card → number"],["number-card","Number → card"]]).map(([id,label]) => `<button data-stats-direction="${id}" aria-pressed="${filter === id}" class="${filter === id ? "selected" : ""}">${label}</button>`).join("")}</div>${formatToggle(reportAnswerFormat(),"report")}<div class="segmented stats-period-toggle" role="group" aria-label="Statistics period">${[["7","7 days"],["30","30 days"],["all","All time"]].map(([id,label]) => `<button data-stats-period="${id}" aria-pressed="${period === id}" class="${period === id ? "selected" : ""}">${label}</button>`).join("")}</div>${resultsCoverage(attempts)}</section><div class="summary-grid stat-cards"><div><strong>${s.eligibleTotal ? s.accuracy.toFixed(0) + "%" : "—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median recall</span></div><div><strong>${s.total}</strong><span>Questions answered</span></div><div><strong>${slow.length ? Math.round((within / slow.length) * 100) + "%" : "—"}</strong><span>Within ${data.settings.speedTarget}s target</span></div></div>${needsWork()}${!s.total ? emptyResults() : `${filter.startsWith("sequence") ? sequenceTrend() : trend(attempts)}<div class="report-notes"><span>${s.wrong} first-answer misses</span><span>${s.hints} questions with hints</span><span>${new Set(attempts.map((a) => a.position)).size}/52 cards practiced</span></div>`}${filter.startsWith("sequence") ? sequenceBests() : directionInsights()}${perCardResults(attempts)}<details id="session-history" data-disclosure="history" class="report-section" ${historyExpanded?"open":""}><summary>Sessions (${sessions.length})</summary>${
+    `<section class="progress-controls" aria-label="Progress filters"><div class="segmented quiz-type-toggle" role="group" aria-label="Quiz type">${[["position","Position practice"],["sequence","Sequence quiz"]].map(([id,label]) => `<button data-stats-type="${id}" aria-pressed="${(filter.startsWith("sequence") ? "sequence" : "position") === id}" class="${(filter.startsWith("sequence") ? "sequence" : "position") === id ? "selected" : ""}">${label}</button>`).join("")}</div><div class="segmented practice-toggle position-directions" role="group" aria-label="${filter.startsWith("sequence") ? "Sequence direction" : "Practice type"}">${(filter.startsWith("sequence") ? [["sequence-forward","Forward"],["sequence-backward","Backward"],["sequence","Combined"]] : [["all","Mixed"],["card-number","Card → number"],["number-card","Number → card"]]).map(([id,label]) => `<button data-stats-direction="${id}" aria-pressed="${filter === id}" class="${filter === id ? "selected" : ""}">${label}</button>`).join("")}</div>${formatToggle(reportAnswerFormat(),"report")}<div class="segmented stats-period-toggle" role="group" aria-label="Statistics period">${[["7","7 days"],["30","30 days"],["all","All time"]].map(([id,label]) => `<button data-stats-period="${id}" aria-pressed="${period === id}" class="${period === id ? "selected" : ""}">${label}</button>`).join("")}</div>${resultsCoverage(attempts)}</section><div class="summary-grid stat-cards"><div><strong>${s.eligibleTotal ? s.accuracy.toFixed(0) + "%" : "—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median recall</span></div><div><strong>${s.total}</strong><span>Questions answered</span></div><div><strong>${slow.length ? Math.round((within / slow.length) * 100) + "%" : "—"}</strong><span>Within ${data.settings.speedTarget}s target</span></div></div>${needsWork()}${confusionsPanel()}${!s.total ? emptyResults() : `${filter.startsWith("sequence") ? sequenceTrend() : trend(attempts)}<div class="report-notes"><span>${s.wrong} first-answer misses</span><span>${s.hints} questions with hints</span><span>${new Set(attempts.map((a) => a.position)).size}/52 cards practiced</span></div>`}${filter.startsWith("sequence") ? sequenceBests() : directionInsights()}${filter.startsWith("sequence")?"":benchmarkHistory(attempts)}${perCardResults(attempts)}<details id="session-history" data-disclosure="history" class="report-section" ${historyExpanded?"open":""}><summary>Sessions (${sessions.length})</summary>${
       sessions.length
         ? `<div class="history-list">${sessions
             .slice(0, historyLimit)
@@ -748,11 +787,11 @@ function detail(position: number) {
   );
 }
 function attemptList(attempts: Attempt[]) {
-  return `<div class="attempt-list">${attempts.map((a) => `<div><strong>${fmtDate(a.at)} · ${modeName(a.direction)} · ${formatName(formatOf(a))}</strong><span>${a.revealed ? "Revealed" : a.hint ? "Assisted" : a.firstCorrect ? "Correct first try" : `${a.wrong} wrong answer${a.wrong === 1 ? "" : "s"}`} · ${fmtTime(a.elapsedMs)}${a.interrupted ? " · interrupted" : ""}${a.recentExposure ? " · recent exposure" : ""}${a.finalResult ? ` · ${a.finalResult}${a.finalElapsedMs !== undefined ? ` after ${fmtTime(a.finalElapsedMs)}` : ""}` : " · final outcome not recorded"}${a.elapsedMs !== null && (a.elapsedMs > 120000 || a.elapsedMs <= 0) ? " · excluded from recall timing" : ""}</span></div>`).join("") || '<p class="muted">No attempts yet.</p>'}</div>`;
+  return `<div class="attempt-list">${attempts.map((a) => `<div><strong>${fmtDate(a.at)} · ${modeName(a.direction)} · ${formatName(formatOf(a))}</strong><span>${a.revealed ? "Revealed" : a.hint ? "Assisted" : a.firstCorrect ? "Correct first try" : `${a.wrong} wrong answer${a.wrong === 1 ? "" : "s"}`} · ${fmtTime(a.elapsedMs)}${a.interrupted ? " · interrupted" : ""}${a.recentExposure ? " · recent exposure" : ""}${a.finalResult ? ` · ${a.finalResult}${a.finalElapsedMs !== undefined ? ` after ${fmtTime(a.finalElapsedMs)}` : ""}` : " · final outcome not recorded"}${a.submissions?.some(s=>s.position!==a.position)?` · Entered: ${a.submissions.filter(s=>s.position!==a.position).map(s=>esc(a.direction==="card-number"?String(s.position):cardName(s.position))).join(", ")}`:""}${a.elapsedMs !== null && (a.elapsedMs > 120000 || a.elapsedMs <= 0) ? " · excluded from recall timing" : ""}</span></div>`).join("") || '<p class="muted">No attempts yet.</p>'}</div>`;
 }
 function settings() {
   chrome(
-    `<section class="settings-panel"><label>Session length<select id="minutes">${[1, 3, 5, 10].map((n) => `<option value="${n}" ${data.settings.minutes === n ? "selected" : ""}>${n} minutes</option>`).join("")}</select></label><label>Speed target<select id="speed">${[2, 3, 5, 8, 10].map((n) => `<option value="${n}" ${data.settings.speedTarget === n ? "selected" : ""}>${n} seconds</option>`).join("")}</select></label><label class="toggle-row"><span>Prioritize slower recall</span><input id="adaptive-speed" type="checkbox" ${data.settings.speedAdaptive ? "checked" : ""}/></label></section><section class="settings-panel"><button class="primary" data-action="export">Export a backup ↓</button><label class="file-label">Restore from a backup<input type="file" id="import" accept="application/json,.json"/></label></section><section class="settings-panel"><button class="primary" data-action="install">${installPrompt ? "Install app ↗" : "How to install ↗"}</button><p id="offline-status" class="muted">${navigator.onLine ? "Online" : "Offline"} · ${navigator.serviceWorker?.controller ? "Offline app ready" : "Offline setup available on the published site"}</p></section><section class="settings-panel"><button class="text-button danger" data-action="reset">Reset all progress</button></section><p class="footnote">Independent practice companion for Juan Tamariz’s Mnemonica. Deckwise v0.3 · <a href="https://www.me.uk/cards/" target="_blank" rel="noopener">Card artwork: Adrian Kennard (CC0)</a>.</p>`,
+    `<section class="settings-panel"><label>Session length<select id="minutes">${[1, 3, 5, 10].map((n) => `<option value="${n}" ${data.settings.minutes === n ? "selected" : ""}>${n} minutes</option>`).join("")}</select></label><label>Speed target<select id="speed">${[2, 3, 5, 8, 10].map((n) => `<option value="${n}" ${data.settings.speedTarget === n ? "selected" : ""}>${n} seconds</option>`).join("")}</select></label><label class="toggle-row"><span>Prioritize slower recall</span><input id="adaptive-speed" type="checkbox" ${data.settings.speedAdaptive ? "checked" : ""}/></label></section><section class="settings-panel"><button class="secondary" data-action="learning-guide">How learning works</button></section><section class="settings-panel"><button class="primary" data-action="export">Export a backup ↓</button><label class="file-label">Restore from a backup<input type="file" id="import" accept="application/json,.json"/></label></section><section class="settings-panel"><button class="primary" data-action="install">${installPrompt ? "Install app ↗" : "How to install ↗"}</button><p id="offline-status" class="muted">${navigator.onLine ? "Online" : "Offline"} · ${navigator.serviceWorker?.controller ? "Offline app ready" : "Offline setup available on the published site"}</p></section><section class="settings-panel"><button class="text-button danger" data-action="reset">Reset all progress</button></section><p class="footnote">Independent practice companion for Juan Tamariz’s Mnemonica. Deckwise v0.3 · <a href="https://www.me.uk/cards/" target="_blank" rel="noopener">Card artwork: Adrian Kennard (CC0)</a>.</p>`,
   );
 }
 function download(name: string, content: string, type: string) {
@@ -797,6 +836,7 @@ function csv() {
     "finalResult",
     "finalElapsedMs",
     "practiceKind",
+    "submittedAnswers",
   ];
   download(
     "deckwise-results.csv",
@@ -819,7 +859,8 @@ function csv() {
           formatOf(a),
           a.finalResult ?? "",
           a.finalElapsedMs ?? "",
-          data.sessions.find(s=>s.id===a.sessionId)?.focus?"focused-drill":isSequence(a.direction)?"sequence":"position",
+          data.sessions.find(s=>s.id===a.sessionId)?.benchmark?"benchmark":data.sessions.find(s=>s.id===a.sessionId)?.focus?.kind??(data.sessions.find(s=>s.id===a.sessionId)?.focus?"focused-drill":isSequence(a.direction)?"sequence":"position"),
+          a.submissions===undefined?"":JSON.stringify(a.submissions),
         ]
           .map((v) => `"${String(v).replace(/"/g, '""')}"`)
           .join(","),
@@ -856,6 +897,17 @@ function setStatsPeriod(next: "7" | "30" | "all") {
   render();
 }
 function bind(root: ParentNode = app) {
+  root.querySelectorAll<HTMLElement>("[data-focus-size]").forEach(b=>b.onclick=()=>{data.settings.focusSize=Number(b.dataset.focusSize) as 5|6|8;save();render();});
+  root.querySelectorAll<HTMLElement>("[data-recheck]").forEach(b=>b.onclick=()=>{
+    const review=rechecks(data).find(r=>r.sourceId===b.dataset.recheck && r.stage===b.dataset.recheckStage);
+    if(!review?.ready){render();return;}
+    const mode:Mode=isSequence(review.mappings[0].direction)?review.mappings[0].direction:new Set(review.mappings.map(m=>m.direction)).size>1?"mixed":review.mappings[0].direction;
+    start(mode,1,review.mappings,review.format,{kind:"recheck",passes:1,sourceSessionId:review.sourceId,recheckStage:review.stage});
+  });
+  root.querySelectorAll<HTMLElement>("[data-confusion]").forEach(b=>b.onclick=()=>{
+    const {format,pairs}=selectedConfusions(),pair=pairs[Number(b.dataset.confusion)];if(!pair)return;
+    start(pair.direction,1,pair.positions.map(position=>({position,direction:pair.direction})),format,{kind:"confusion"});
+  });
   root.querySelectorAll<HTMLElement>("[data-practice-format]").forEach(b => b.onclick = () => {
     data.settings.answerFormat = b.dataset.practiceFormat as AnswerFormat;
     reportFormat = data.settings.answerFormat;
@@ -908,7 +960,7 @@ function bind(root: ParentNode = app) {
         const session = data.sessions.find((s) => s.id === b.dataset.session)!;
         const detailAttempts = isSequence(session.mode) ? data.attempts : filtered();
         showDialog(
-          `<div class="eyebrow">${fmtDate(session.startedAt)}</div>${session.runTarget ? runResults(session) : `<h2>${filter === "all"||filter==="sequence" ? sessionDirectionName(session) : modeName(filter as Direction)}</h2><p>${session.focus?sessionLabel(session,data.attempts.filter(a=>a.sessionId===session.id).length):session.duration / 60000+"-minute session"} · ${formatName(formatOf(session))}</p>`}${attemptList(detailAttempts.filter((a) => a.sessionId === session.id).reverse())}<button class="text-button danger" data-delete-session="${esc(session.id)}">Delete session</button>`,
+          `<div class="eyebrow">${fmtDate(session.startedAt)}</div>${session.runTarget ? runResults(session) : `<h2>${filter === "all"||filter==="sequence" ? sessionDirectionName(session) : modeName(filter as Direction)}</h2><p>${session.focus||session.benchmark?sessionLabel(session,data.attempts.filter(a=>a.sessionId===session.id).length):session.duration / 60000+"-minute session"} · ${formatName(formatOf(session))}</p>`}${attemptList(detailAttempts.filter((a) => a.sessionId === session.id).reverse())}<button class="text-button danger" data-delete-session="${esc(session.id)}">Delete session</button>`,
         );
       }),
   );
@@ -938,6 +990,10 @@ function bind(root: ParentNode = app) {
             practiceType="position";route("practice");break;
           case "drill-weakest":
             startFocus();break;
+          case "learning-guide":
+            showDialog(learningGuide());break;
+          case "start-benchmark":
+            start(data.settings.mode,1,undefined,formatOf(data.settings),undefined,benchmarkMappings(data.settings.mode));break;
           case "start-sequence":
             startSequence();
             break;
@@ -954,6 +1010,7 @@ function bind(root: ParentNode = app) {
             paused = !resume;
             if (active?.runTarget) {active.elapsedMs = sessionElapsed; save();}
             if(active?.focus){active.focus.elapsedMs=sessionElapsed;save();}
+            if(active?.benchmark){active.benchmark.elapsedMs=sessionElapsed;save();}
             if (q && q.firstCorrect === null) q.interrupted = true;
             lastTick = performance.now();
             render();

@@ -707,7 +707,7 @@ function trendSeed() {
 test("Progress plots daily rolling general practice while focused drills remain in totals and history",()=>{
  const d=trendSeed(),ui=appHarness(d);ui.click('data-view','progress');ui.click('data-report-format','direct-recall');
  const chart=(html:string)=>html.split('class="chart progress-trend"')[1].split('</details>')[0];
- assert.ok(chart(ui.app.innerHTML).includes('General practice trend'));assert.ok(chart(ui.app.innerHTML).includes('up to 100 eligible general-practice answers'));
+ assert.ok(chart(ui.app.innerHTML).includes('General practice trend'));assert.ok(chart(ui.app.innerHTML).includes('all eligible general-practice answers'));
  assert.ok(chart(ui.app.innerHTML).includes('drills excluded'));assert.ok(chart(ui.app.innerHTML).includes('speed-target-line'));
  assert.equal(chart(ui.app.innerHTML).includes('Last 20 sessions'),false);
  assert.ok(ui.app.innerHTML.includes('<strong>135</strong><span>Questions answered</span>'));assert.ok(ui.app.innerHTML.includes('Drill 5'));
@@ -725,6 +725,60 @@ test("All formats shows independent progress charts and sparse or drill-only his
  const drill=appHarness(only);drill.click('data-view','progress');drill.click('data-report-format','direct-recall');
  const chart=drill.app.innerHTML.split('class="chart progress-trend"')[1].split('</div>')[0];
  assert.equal(drill.app.innerHTML.includes('Daily rolling general-practice accuracy'),false);
- assert.ok(drill.app.innerHTML.includes('Build a trend with 20 general-practice answers across 10 mappings'));
+ assert.ok(drill.app.innerHTML.includes('No eligible general-practice answers in this view'));
  assert.ok(drill.app.innerHTML.includes('Drill 5'));
+});
+for(const format of ['direct-recall','multiple-choice'])for(const mode of ['card-number','number-card','mixed'])test(`${format} ${mode} benchmark covers every mapping once and survives misses and reload`,()=>{
+ let ui=appHarness();ui.click('data-mode',mode);ui.click('data-practice-format',format);ui.click('data-action','start-benchmark');
+ const planned=JSON.parse(JSON.stringify(ui.state().active.benchmark.mappings)),target=mode==='mixed'?104:52;
+ for(let i=0;i<target;i++){
+  if(i===3){const id=ui.state().q.id;ui=ui.reload(5000);assert.equal(ui.state().q.id,id);assert.equal(ui.state().paused,true);ui.click('data-action','pause');}
+  const q=ui.state().q;assert.equal(q.position,planned[i].position);assert.equal(q.direction,planned[i].direction);
+  if(i===1&&format==='multiple-choice'){const wrong=q.options.find((p:number)=>p!==q.position);ui.click('data-answer',String(wrong));assert.equal(ui.state().q.firstCorrect,false);}
+  ui.advance(1000);if(format==='direct-recall')answerCurrent(ui);else ui.click('data-answer',String(q.position));
+ }
+ const d=ui.saved(),s=d.sessions.at(-1);assert.equal(s.benchmark.completed,true);assert.equal(d.attempts.length,target);
+ assert.equal(new Set(d.attempts.map((a:any)=>a.direction+':'+a.position)).size,target);
+ assert.ok(ui.dialogHtml().includes('Benchmark complete'));assert.deepEqual(validate(d),d);
+ ui.click('data-action','summary-progress');assert.ok(ui.app.innerHTML.includes('Benchmarks (1)'));assert.ok(ui.app.innerHTML.includes('Benchmark · '+target+'/'+target));
+});
+test('partial benchmark remains partial and correction submissions survive reload, backup and confusion practice',()=>{
+ let ui=appHarness();ui.begin('card-number');const expected=ui.state().q.position,wrong=expected===7?8:7;
+ ui.key(String(wrong));ui.advance(400);ui.key('Enter');const original=ui.saved().attempts[0];
+ assert.equal(original.submissions[0].position,wrong);ui=ui.reload();ui.click('data-action','pause');
+ for(const digit of String(expected))ui.key(digit);ui.advance(300);ui.key('Enter');
+ ui.click('data-action','finish');ui.click('data-action','summary-progress');
+ const a=ui.saved().attempts[0];assert.equal(a.submissions.length,2);assert.equal(a.submissions[1].position,expected);assert.equal(a.firstCorrect,false);assert.equal(a.elapsedMs,400);
+ assert.ok(ui.app.innerHTML.includes('Confusions (1)'));ui.click('data-confusion','0');assert.equal(ui.state().active.focus.kind,'confusion');
+ for(let i=0;i<6;i++){ui.advance(1000);answerCurrent(ui);}
+ assert.equal(ui.saved().sessions.at(-1).focus.completed,true);assert.deepEqual(validate(ui.saved()),ui.saved());
+ ui.click('data-action','summary-progress');ui.click('data-view','practice');ui.click('data-action','start-benchmark');ui.advance(500);answerCurrent(ui);ui.click('data-action','finish');
+ assert.equal(ui.saved().sessions.at(-1).benchmark.completed,false);assert.ok(ui.dialogHtml().includes('Benchmark ended'));
+});
+test('six/eight mapping drills persist their size and offer one-pass delayed rechecks without becoming general practice',()=>{
+ let ui=appHarness(focusSeed());ui.click('data-view','progress');ui.click('data-report-format','direct-recall');ui.click('data-focus-size','6');
+ assert.ok(ui.app.innerHTML.includes('Drill weakest 6'));ui=ui.reload();assert.equal(ui.saved().settings.focusSize,6);
+ ui.click('data-action','drill-weakest');for(let i=0;i<18;i++){ui.advance(1000);answerCurrent(ui);}
+ const source=ui.saved().sessions.at(-1);assert.equal(source.focus.mappings.length,6);assert.equal(source.focus.completed,true);
+ ui.click('data-action','summary-progress');ui.click('data-view','practice');assert.ok(ui.app.innerHTML.includes('Recheck 6'));
+ const before=ui.saved().sessions.length;ui.click('data-recheck',source.id);assert.equal(ui.saved().sessions.length,before);
+ ui=ui.reload(30*60000);ui.click('data-recheck',source.id);assert.equal(ui.state().active.focus.kind,'recheck');assert.equal(ui.state().active.focus.target,6);
+ for(let i=0;i<6;i++){ui.advance(1000);answerCurrent(ui);}
+ assert.ok(ui.dialogHtml().includes('Recheck complete'));assert.equal(ui.saved().sessions.at(-1).focus.recheckStage,'later');
+ ui.click('data-action','summary-progress');ui.click('data-view','practice');assert.ok(ui.app.innerHTML.includes('Next-day'));
+ ui=ui.reload(24*3600000);ui.click('data-recheck',source.id);for(let i=0;i<6;i++){ui.advance(1000);answerCurrent(ui);}
+ assert.equal(ui.saved().sessions.at(-1).focus.recheckStage,'next-day');assert.deepEqual(validate(ui.saved()),ui.saved());
+ ui.click('data-action','summary-progress');ui.click('data-focus-size','8');assert.ok(ui.app.innerHTML.includes('Drill weakest 8'));
+});
+test('Settings exposes a complete plain-English learning guide',()=>{
+ const ui=appHarness();ui.click('data-view','settings');ui.click('data-action','learning-guide');
+ for(const text of ['How learning works','The recall score','How adaptive practice selects a prompt','Delayed rechecks','Confusion pairs','Balanced random-access benchmarks','Daily graphs and report totals','three quarters','15%','85%'])assert.ok(ui.dialogHtml().includes(text),text);
+});
+test('daily chart keeps morning and late-night answers on the oldest selected calendar day',()=>{
+ const d=emptyData(),now=50*86400000,start=new Date(now);start.setHours(0,0,0,0);start.setDate(start.getDate()-6);
+ const at=start.getTime(),s={id:'whole-day',mode:'card-number' as const,answerFormat:'direct-recall' as const,startedAt:at,endedAt:at+23*3600000,duration:60000};
+ d.sessions=[s];d.attempts=Array.from({length:200},(_,i)=>({id:'whole'+i,sessionId:s.id,position:i%20+1,direction:'card-number' as const,answerFormat:'direct-recall' as const,at:at+(i<100?3600000:22*3600000)+i,firstCorrect:true,wrong:0,hint:false,revealed:false,elapsedMs:i<100?2000:8000,interrupted:false,recentExposure:false}));
+ const ui=appHarness(d);ui.click('data-view','progress');ui.click('data-report-format','direct-recall');
+ const chart=ui.app.innerHTML.split('class="chart progress-trend"')[1].split('</details>')[0];
+ assert.ok(chart.includes('<td>200<br/>'));assert.ok(chart.includes('5.0s'));assert.ok(chart.includes('all eligible general-practice answers'));
 });

@@ -13,11 +13,10 @@ export function sessionTrend(sessions: Session[], attempts: Attempt[], limit = 2
     .map(session => ({session, stats:summary(grouped.get(session.id)!)}));
 }
 
-export const TREND_WINDOW = 100;
 export const TREND_MIN_ANSWERS = 20;
 export const TREND_MIN_MAPPINGS = 10;
 export const TREND_MIN_TIMED = 5;
-/** Daily snapshots of general practice, independent of session length or count.
+/** Whole-day general-practice totals, with no cap on included answers.
  * Call with evidence already scoped to the selected report window/direction.
  * Each format remains a separate series; focused drills never enter the window.
  */
@@ -30,16 +29,13 @@ export function progressTrend(sessions:Session[], attempts:Attempt[], format:Ans
     const date=new Date(a.at),day=[date.getFullYear(),date.getMonth()+1,date.getDate()].join("-");
     const group=days.get(day) ?? [];group.push(a);days.set(day,group);
   }
-  const window:Attempt[]=[];
-  const points:{at:number;from:number;mappings:number;stats:ReturnType<typeof summary>}[]=[];
+  const points:{at:number;from:number;mappings:number;lowSample:boolean;timingLowSample:boolean;stats:ReturnType<typeof summary>}[]=[];
   for(const group of days.values()) {
-    // Slice per day rather than spread the entire history into a function call.
-    for(const a of group) {window.push(a);if(window.length>TREND_WINDOW)window.shift();}
-    const mappings=new Set(window.map(a=>a.direction+":"+a.position)).size;
-    if(window.length<TREND_MIN_ANSWERS || mappings<TREND_MIN_MAPPINGS)continue;
-    const stats=summary(window);
-    points.push({at:window.at(-1)!.at,from:window[0].at,mappings,
-      stats:{...stats,medianMs:stats.timedCount>=TREND_MIN_TIMED?stats.medianMs:null}});
+    const mappings=new Set(group.map(a=>a.direction+":"+a.position)).size;
+    const stats=summary(group);
+    points.push({at:group.at(-1)!.at,from:group[0].at,mappings,
+      lowSample:group.length<TREND_MIN_ANSWERS || mappings<TREND_MIN_MAPPINGS,
+      timingLowSample:stats.timedCount<TREND_MIN_TIMED,stats});
   }
   return {format,count:evidence.length,mappings:new Set(evidence.map(a=>a.direction+":"+a.position)).size,points:points.slice(-limit)};
 }
