@@ -760,9 +760,12 @@ test('six/eight mapping drills persist their size and offer one-pass delayed rec
  assert.ok(ui.app.innerHTML.includes('Drill weakest 6'));ui=ui.reload();assert.equal(ui.saved().settings.focusSize,6);
  ui.click('data-action','drill-weakest');for(let i=0;i<18;i++){ui.advance(1000);answerCurrent(ui);}
  const source=ui.saved().sessions.at(-1);assert.equal(source.focus.mappings.length,6);assert.equal(source.focus.completed,true);
- ui.click('data-action','summary-progress');ui.click('data-view','practice');assert.ok(ui.app.innerHTML.includes('Recheck 6'));
+ ui.click('data-action','summary-progress');ui.click('data-view','practice');assert.ok(ui.app.innerHTML.includes('Recheck 6 mappings'));
+ assert.ok(ui.app.innerHTML.includes('One question per mapping, 30 minutes after a drill and again the next day.'));
+ assert.ok(ui.app.innerHTML.includes('After a 30-minute delay'));assert.ok(ui.app.innerHTML.includes(' drill</small>'));
+ assert.equal(ui.app.querySelector('[data-recheck="'+source.id+'"]').disabled,true);
  const before=ui.saved().sessions.length;ui.click('data-recheck',source.id);assert.equal(ui.saved().sessions.length,before);
- ui=ui.reload(30*60000);ui.click('data-recheck',source.id);assert.equal(ui.state().active.focus.kind,'recheck');assert.equal(ui.state().active.focus.target,6);
+ ui=ui.reload(30*60000);assert.ok(ui.app.innerHTML.includes('Ready now'));ui.click('data-recheck',source.id);assert.equal(ui.state().active.focus.kind,'recheck');assert.equal(ui.state().active.focus.target,6);
  for(let i=0;i<6;i++){ui.advance(1000);answerCurrent(ui);}
  assert.ok(ui.dialogHtml().includes('Recheck complete'));assert.equal(ui.saved().sessions.at(-1).focus.recheckStage,'later');
  ui.click('data-action','summary-progress');ui.click('data-view','practice');assert.ok(ui.app.innerHTML.includes('Next-day'));
@@ -781,4 +784,41 @@ test('daily chart keeps morning and late-night answers on the oldest selected ca
  const ui=appHarness(d);ui.click('data-view','progress');ui.click('data-report-format','direct-recall');
  const chart=ui.app.innerHTML.split('class="chart progress-trend"')[1].split('</details>')[0];
  assert.ok(chart.includes('<td>200<br/>'));assert.ok(chart.includes('5.0s'));assert.ok(chart.includes('all eligible general-practice answers'));
+});
+test('an immediately repeated six-mapping drill shows practice results without creating independent evidence',()=>{
+ const seed=focusSeed();
+ for(const a of seed.attempts)a.at=50*86400000-10000;
+ const ui=appHarness(seed);ui.click('data-view','progress');ui.click('data-report-format','direct-recall');ui.click('data-focus-size','6');
+ ui.click('data-action','drill-weakest');
+ for(let i=0;i<18;i++){ui.advance(1000);answerCurrent(ui);}
+ const d=ui.saved(),session=d.sessions.at(-1),answers=d.attempts.filter((a:any)=>a.sessionId===session.id);
+ assert.equal(answers.length,18);assert.ok(answers.every((a:any)=>a.firstCorrect&&a.recentExposure));
+ assert.ok(ui.dialogHtml().includes('100%'),'A completed all-correct drill needs visible practice accuracy');
+ assert.ok(ui.dialogHtml().includes('1.0s'),'Eligible practice timing includes repeats');
+ assert.ok(ui.dialogHtml().includes('Practice median'));
+ assert.ok(ui.dialogHtml().includes('0 independent samples'));
+ assert.ok(ui.dialogHtml().includes('18 recently seen'));
+ assert.ok(ui.dialogHtml().includes('6 mappings · 3 rounds'));
+ assert.deepEqual(validate(d),d);
+ ui.click('data-action','summary-progress');
+ assert.ok(ui.app.innerHTML.includes('100%'));
+ ui.click('data-session',session.id);assert.ok(ui.dialogHtml().includes('Practice median'));
+});
+test('recheck entries identify remaining mapping counts, source drills and additional checks',()=>{
+ const d=focusSeed(),now=50*86400000;
+ for(const [i,positions] of [[0,[1,2,3]],[1,[1,2]],[2,[4]],[3,[5]]] as const){
+  const endedAt=now-3600000+i*60000,id='source-'+i;
+  d.sessions.push({id,mode:'card-number',answerFormat:'direct-recall',startedAt:endedAt-10000,endedAt,duration:0,
+   focus:{mappings:positions.map(position=>({position,direction:'card-number'})),target:positions.length*3,elapsedMs:10000,completed:true}});
+  for(let n=0;n<positions.length*3;n++)d.attempts.push({id:id+'-'+n,sessionId:id,position:positions[n%positions.length],direction:'card-number',answerFormat:'direct-recall',
+   at:endedAt-10000+n,firstCorrect:true,wrong:0,hint:false,revealed:false,elapsedMs:1000,interrupted:false,recentExposure:n>=positions.length});
+ }
+ const ui=appHarness(d);ui.click('data-view','practice');
+ const panel=ui.app.innerHTML.split('aria-label="Delayed rechecks"')[1];
+ assert.ok(panel.includes('Recheck 1 mapping'));assert.ok(panel.includes('Recheck 2 mappings'));
+ assert.ok(panel.includes('More rechecks (1)'));assert.equal((panel.match(/data-recheck="source-/g)??[]).length,4);
+ assert.equal((panel.match(/Ready now/g)??[]).length,4);assert.equal((panel.match(/After a 30-minute delay/g)??[]).length,4);
+ for(let i=0;i<4;i++)assert.equal(ui.app.querySelector('[data-recheck="source-'+i+'"]').disabled,false);
+ ui.click('data-recheck','source-0');assert.equal(ui.state().active.focus.target,1);assert.equal(ui.state().q.position,3);
+ assert.equal(ui.state().active.focus.passes,1);assert.deepEqual(validate(ui.saved()),ui.saved());
 });

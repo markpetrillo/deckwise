@@ -1,7 +1,7 @@
 import {test} from "node:test";
 import assert from "node:assert/strict";
-import {emptyData,validate,deleteSession,restoreSession,sequenceResult,type Attempt,type Session,type Direction,type AnswerFormat} from "../src/core";
-import {weakestMappings,focusPrompt} from "../src/focus";
+import {emptyData,validate,deleteSession,restoreSession,sequenceResult,type Attempt,type Session,type Direction,type AnswerFormat,mappingModel,summary} from "../src/core";
+import {weakestMappings,focusPrompt,drillSummary} from "../src/focus";
 import {sequenceRuns} from "../src/reporting";
 const now=50*86400000;
 function answer(position:number,direction:Direction="number-card",format:AnswerFormat="direct-recall",correct=true,ms=1000):Attempt {
@@ -40,4 +40,25 @@ test("malformed focus plans and answers outside the selected mappings are reject
   (x:any)=>x.sessions[0].focus.mappings[0].direction="sequence-forward",(x:any)=>x.sessions[0].focus.elapsedMs=-1,
   (x:any)=>x.attempts=[{...answer(2,"card-number"),sessionId:"drill"}]];
  for(const change of mutations){const bad=structuredClone(d);change(bad);assert.throws(()=>validate(bad));}
+});
+
+test('drill feedback includes repetitions but preserves first misses, assistance and timing exclusions',()=>{
+ const attempts=[
+  {...answer(1),id:'clean',recentExposure:false,elapsedMs:1000},
+  {...answer(1),id:'repeat',recentExposure:true,elapsedMs:3000},
+  {...answer(1),id:'interrupted',recentExposure:true,interrupted:true,elapsedMs:8000},
+  {...answer(1),id:'hint',recentExposure:true,hint:true,elapsedMs:1000},
+  {...answer(1),id:'revealed',recentExposure:true,firstCorrect:false,revealed:true,elapsedMs:1000},
+  {...answer(1),id:'corrected',recentExposure:true,firstCorrect:false,wrong:1,elapsedMs:4000,finalResult:'corrected' as const},
+  {...answer(1),id:'outlier',recentExposure:true,elapsedMs:150000},
+  {...answer(1),id:'zero',recentExposure:true,elapsedMs:0}
+ ];
+ const before=structuredClone(attempts),model=mappingModel(attempts,1,'number-card',3,now);
+ const result=drillSummary(attempts);
+ assert.equal(result.practice.accuracy,62.5);assert.equal(result.practice.medianMs,2000);assert.equal(result.practice.timedCount,2);
+ assert.equal(result.practice.wrong,2);assert.equal(result.practice.hints,1);
+ assert.equal(result.independent.eligibleTotal,1);assert.equal(result.independent.recent,7);assert.equal(result.independent.medianMs,1000);
+ assert.deepEqual(result.independent,summary(attempts));assert.deepEqual(attempts,before);
+ assert.deepEqual(mappingModel(attempts,1,'number-card',3,now),model);
+ const empty=drillSummary([]);assert.equal(empty.practice.eligibleTotal,0);assert.equal(empty.practice.medianMs,null);
 });

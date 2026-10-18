@@ -1,4 +1,4 @@
-import {formatOf,mappingModel,type Attempt,type Direction,type AnswerFormat,type FocusPlan} from "./core";
+import {formatOf,mappingModel,summary,type Attempt,type Direction,type AnswerFormat,type FocusPlan} from "./core";
 /** Each mapping is scored independently within one answer format. */
 export function weakestMappings(attempts:Attempt[],directions:Direction[],format:AnswerFormat,target=3,now=Date.now(),limit=5) {
  const evidence=attempts.filter(a=>formatOf(a)===format);
@@ -12,4 +12,11 @@ export function weakestMappings(attempts:Attempt[],directions:Direction[],format
 /** A fixed cycle gives every selected mapping three turns before completion. */
 export function focusPrompt(plan:FocusPlan,completed:number) {
  return plan.mappings[completed%plan.mappings.length];
+}
+
+/** Drill feedback includes recent repetitions without changing saved eligibility. */
+export function drillSummary(attempts:Attempt[]) {
+ const independent=summary(attempts);
+ const practice=summary(attempts.map(a=>({...a,recentExposure:false})));
+ return {practice,independent};
 }
