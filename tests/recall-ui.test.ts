@@ -694,3 +694,37 @@ test("All 52 cards follows the selected date range and labels it instead of sile
  ui.click('data-stats-period','30');assert.ok(table().includes('· 30 days'));assert.ok(row(3).includes('<td>1<small'));assert.ok(row(5).includes('<td>—'));
  ui.click('data-stats-period','all');assert.ok(table().includes('· All time'));assert.ok(row(5).includes('<td>1<small'));
 });
+function trendSeed() {
+ const d=emptyData(),now=50*86400000;d.settings.answerFormat='direct-recall';
+ for(const [day,count,focused] of [[3,60,false],[2,60,false],[1,15,true]] as const){
+  const at=now-day*86400000+10*3600000,id='trend-'+day;
+  d.sessions.push({id,mode:'card-number',answerFormat:'direct-recall',startedAt:at,endedAt:at+count*1000+1000,duration:120000,
+   ...(focused?{focus:{mappings:Array.from({length:5},(_,i)=>({position:i+1,direction:'card-number' as const})),target:15,elapsedMs:15000,completed:true}}:{})});
+  for(let i=0;i<count;i++)d.attempts.push({id:id+i,sessionId:id,position:i%(focused?5:20)+1,direction:'card-number',answerFormat:'direct-recall',at:at+i*1000,firstCorrect:!focused,wrong:focused?1:0,hint:false,revealed:false,elapsedMs:focused?9000:2000,interrupted:false,recentExposure:false});
+ }
+ return d;
+}
+test("Progress plots daily rolling general practice while focused drills remain in totals and history",()=>{
+ const d=trendSeed(),ui=appHarness(d);ui.click('data-view','progress');ui.click('data-report-format','direct-recall');
+ const chart=(html:string)=>html.split('class="chart progress-trend"')[1].split('</details>')[0];
+ assert.ok(chart(ui.app.innerHTML).includes('General practice trend'));assert.ok(chart(ui.app.innerHTML).includes('up to 100 eligible general-practice answers'));
+ assert.ok(chart(ui.app.innerHTML).includes('drills excluded'));assert.ok(chart(ui.app.innerHTML).includes('speed-target-line'));
+ assert.equal(chart(ui.app.innerHTML).includes('Last 20 sessions'),false);
+ assert.ok(ui.app.innerHTML.includes('<strong>135</strong><span>Questions answered</span>'));assert.ok(ui.app.innerHTML.includes('Drill 5'));
+ const without=structuredClone(d);without.sessions=without.sessions.filter(s=>!s.focus);without.attempts=without.attempts.filter(a=>a.sessionId!=='trend-1');
+ const other=appHarness(without);other.click('data-view','progress');other.click('data-report-format','direct-recall');
+ assert.equal(chart(ui.app.innerHTML),chart(other.app.innerHTML));assert.deepEqual(ui.saved().attempts,d.attempts);
+});
+test("All formats shows independent progress charts and sparse or drill-only history never plots a misleading point",()=>{
+ const d=trendSeed(),s={id:'legacy-trend',mode:'card-number' as const,startedAt:47*86400000,endedAt:47*86400000+60000,duration:60000};
+ d.sessions.push(s);d.attempts.push(...d.attempts.filter(a=>a.sessionId==='trend-3').slice(0,20).map((a,i)=>({...a,id:'legacy'+i,sessionId:s.id,at:s.startedAt+i*1000,answerFormat:undefined,elapsedMs:1000})));
+ const ui=appHarness(d);ui.click('data-view','progress');ui.click('data-report-format','all');
+ assert.equal((ui.app.innerHTML.match(/class="chart progress-trend"/g)??[]).length,2);
+ assert.ok(ui.app.innerHTML.includes('<small>Direct recall</small>'));assert.ok(ui.app.innerHTML.includes('<small>Multiple choice</small>'));
+ const only=structuredClone(d);only.sessions=only.sessions.filter(s=>s.focus);only.attempts=only.attempts.filter(a=>a.sessionId==='trend-1');
+ const drill=appHarness(only);drill.click('data-view','progress');drill.click('data-report-format','direct-recall');
+ const chart=drill.app.innerHTML.split('class="chart progress-trend"')[1].split('</div>')[0];
+ assert.equal(drill.app.innerHTML.includes('Daily rolling general-practice accuracy'),false);
+ assert.ok(drill.app.innerHTML.includes('Build a trend with 20 general-practice answers across 10 mappings'));
+ assert.ok(drill.app.innerHTML.includes('Drill 5'));
+});

@@ -38,7 +38,7 @@ import { cardImage, numberCard } from "./cards";
 import {UI_STORE, loadUiState, type UiState, type QuestionState, type View, type ReportFilter} from "./ui-state";
 import {weakestMappings,focusPrompt} from "./focus";
 import { uiIcon } from "./icons";
-import { sessionTrend, directionComparison, reportEvidence, cardRanking, mappingInsights, type CardSort, sequenceRuns } from "./reporting";
+import { progressTrend, TREND_WINDOW, TREND_MIN_ANSWERS, TREND_MIN_MAPPINGS, directionComparison, reportEvidence, cardRanking, mappingInsights, type CardSort, sequenceRuns } from "./reporting";
 const app = document.querySelector<HTMLDivElement>("#app")!;
 const STORE = "deckwise.v1";
 let storageProblem = "";
@@ -551,24 +551,32 @@ function resultsCoverage(attempts: Attempt[]) {
   return `<div class="results-coverage" aria-label="Results coverage">${attempts.length} of ${total} answers${first?` · ${esc(first)}${first===last?"":" – "+esc(last)}`:""}</div>`;
 }
 function trend(attempts: Attempt[]): string {
-  const sessions = sessionTrend(data.sessions, attempts);
-  if (!sessions.length) return "";
-  const maxSeconds = Math.max(1, Math.ceil(Math.max(...sessions.map(s => (s.stats.medianMs ?? 0) / 1000))));
-  const points = sessions.map((s,i) => ({...s, x:sessions.length === 1 ? 190 : 42 + i * 296 / (sessions.length-1)}));
-  const accuracyY = (accuracy: number) => 142 - accuracy * 1.06;
-  const speedY = (ms: number) => 142 - ms / 1000 / maxSeconds * 106;
-  const path = (metric: "accuracy" | "speed") => {
-    let gap = true;
-    return points.map(p => {
-      const value = metric === "accuracy" ? p.stats.eligibleTotal ? p.stats.accuracy : null : p.stats.medianMs;
-      if (value === null) {gap = true; return "";}
-      const point = `${gap ? "M" : "L"}${p.x},${metric === "accuracy" ? accuracyY(value) : speedY(value)}`;
-      gap = false;
-      return point;
-    }).join(" ");
-  };
-  const label = (s: Session) => esc(new Date(s.startedAt).toLocaleString(undefined,{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"}));
-  return `<div class="chart session-trend"><div class="chart-title"><span>Last ${sessions.length} sessions</span></div><div class="trend-legend"><span class="accuracy-key">Accuracy (%)</span><span class="speed-key">Median correct time (sec)</span></div><svg viewBox="0 0 380 185" role="img" aria-label="Session accuracy on the left percent axis and median correct-answer time on the right seconds axis. Exact session values follow below."><text x="8" y="19" font-size="10" fill="#79b7ff">%</text><text x="350" y="19" font-size="10" fill="#d1b6ff">sec</text>${[0,50,100].map(n => `<line x1="42" x2="338" y1="${accuracyY(n)}" y2="${accuracyY(n)}" stroke="#2c3e5a" stroke-dasharray="3 4"/><text x="30" y="${accuracyY(n)+3}" text-anchor="end" font-size="10" fill="#79b7ff">${n}</text><text x="350" y="${accuracyY(n)+3}" font-size="10" fill="#d1b6ff">${Number((maxSeconds*n/100).toFixed(1))}</text>`).join("")}<path d="${path("accuracy")}" fill="none" stroke="#79b7ff" stroke-width="2.5"/><path d="${path("speed")}" fill="none" stroke="#d1b6ff" stroke-width="2.5"/>${points.map(p => `${p.stats.eligibleTotal ? `<circle cx="${p.x}" cy="${accuracyY(p.stats.accuracy)}" r="4" fill="#79b7ff"><title>${label(p.session)}: ${p.stats.accuracy.toFixed(0)}% accuracy</title></circle>` : ""}${p.stats.medianMs !== null ? `<circle cx="${p.x}" cy="${speedY(p.stats.medianMs)}" r="4" fill="#d1b6ff"><title>${label(p.session)}: ${fmtTime(p.stats.medianMs)} median correct answer</title></circle>` : ""}`).join("")}<text x="42" y="171" font-size="10" fill="#9aabc6">Oldest</text><text x="338" y="171" text-anchor="end" font-size="10" fill="#9aabc6">Newest</text></svg><details><summary>Session accuracy &amp; speed</summary><div class="table-wrap"><table><thead><tr><th>Session</th><th>Answers</th><th>Accuracy</th><th>Median</th></tr></thead><tbody>${[...sessions].reverse().map(({session,stats}) => `<tr><td>${label(session)}<br/><small>${session.duration / 60000} min · ${filter === "all"||filter==="sequence" ? sessionDirectionName(session) : modeName(filter as Direction)}</small></td><td>${stats.total}</td><td>${stats.eligibleTotal ? stats.accuracy.toFixed(0)+"%" : "—"}</td><td>${fmtTime(stats.medianMs)}</td></tr>`).join("")}</tbody></table></div></details></div>`;
+  const formats:AnswerFormat[]=reportFormat==="all"?["direct-recall","multiple-choice"]:[reportFormat];
+  const series=formats.map(format=>progressTrend(data.sessions,attempts,format)).filter(s=>s.count>0);
+  if(!series.length)return `<div class="chart progress-trend"><div class="chart-title"><span>General practice trend</span></div><p class="trend-note">Build a trend with ${TREND_MIN_ANSWERS} general-practice answers across ${TREND_MIN_MAPPINGS} mappings. Focused drills stay in your history.</p></div>`;
+  return series.map(series=>{
+    const {points}=series;
+    const heading=`<div class="chart-title"><span>General practice trend</span><small>${formatName(series.format)}</small></div>`;
+    if(!points.length)return `<div class="chart progress-trend">${heading}<p class="trend-note">${series.count} eligible answers · ${series.mappings} mappings. The trend starts at ${TREND_MIN_ANSWERS} answers across ${TREND_MIN_MAPPINGS} mappings.</p></div>`;
+    const latest=points.at(-1)!;
+    const maxSeconds=Math.max(data.settings.speedTarget,Math.ceil(Math.max(...points.map(p=>(p.stats.medianMs??0)/1000))));
+    const firstAt=points[0].at,lastAt=latest.at;
+    const positioned=points.map(p=>({...p,x:firstAt===lastAt?190:42+(p.at-firstAt)*296/(lastAt-firstAt)}));
+    const accuracyY=(accuracy:number)=>142-accuracy*1.06;
+    const speedY=(ms:number)=>142-ms/1000/maxSeconds*106;
+    const shortDate=(at:number)=>esc(new Date(at).toLocaleDateString(undefined,{month:"short",day:"numeric"}));
+    const fullDate=(at:number)=>esc(new Date(at).toLocaleDateString(undefined,{month:"short",day:"numeric",year:"numeric"}));
+    const path=(metric:"accuracy"|"speed")=>{
+      let gap=true;
+      return positioned.map(p=>{
+        const value=metric==="accuracy"?p.stats.accuracy:p.stats.medianMs;
+        if(value===null){gap=true;return "";}
+        const point=`${gap?"M":"L"}${p.x},${metric==="accuracy"?accuracyY(value):speedY(value)}`;
+        gap=false;return point;
+      }).join(" ");
+    };
+    return `<div class="chart progress-trend">${heading}<div class="trend-legend"><span class="accuracy-key">Accuracy (%)</span><span class="speed-key">Median recall (sec)</span><span class="target-key">${data.settings.speedTarget}s target</span></div><svg viewBox="0 0 380 185" role="img" aria-label="Daily rolling general-practice accuracy and median correct recall time. Focused drills excluded. Exact rolling windows follow below."><text x="8" y="19" font-size="10" fill="#79b7ff">%</text><text x="350" y="19" font-size="10" fill="#d1b6ff">sec</text>${[0,50,100].map(n=>`<line x1="42" x2="338" y1="${accuracyY(n)}" y2="${accuracyY(n)}" stroke="#2c3e5a" stroke-dasharray="3 4"/><text x="30" y="${accuracyY(n)+3}" text-anchor="end" font-size="10" fill="#79b7ff">${n}</text><text x="350" y="${accuracyY(n)+3}" font-size="10" fill="#d1b6ff">${Number((maxSeconds*n/100).toFixed(1))}</text>`).join("")}<line class="speed-target-line" x1="42" x2="338" y1="${speedY(data.settings.speedTarget*1000)}" y2="${speedY(data.settings.speedTarget*1000)}" stroke="#9aabc6" stroke-dasharray="5 5"/><path d="${path("accuracy")}" fill="none" stroke="#79b7ff" stroke-width="2.5"/><path d="${path("speed")}" fill="none" stroke="#d1b6ff" stroke-width="2.5"/>${positioned.map(p=>`<circle cx="${p.x}" cy="${accuracyY(p.stats.accuracy)}" r="3.5" fill="#79b7ff"><title>${fullDate(p.at)}: ${p.stats.accuracy.toFixed(0)}% across ${p.stats.eligibleTotal} answers, ${p.mappings} mappings</title></circle>${p.stats.medianMs===null?"":`<circle cx="${p.x}" cy="${speedY(p.stats.medianMs)}" r="3.5" fill="#d1b6ff"><title>${fullDate(p.at)}: ${fmtTime(p.stats.medianMs)} median, ${p.stats.timedCount} timed answers</title></circle>`}`).join("")}<text x="${firstAt===lastAt?190:42}" y="171" text-anchor="${firstAt===lastAt?"middle":"start"}" font-size="10" fill="#9aabc6">${shortDate(firstAt)}</text>${firstAt===lastAt?"":`<text x="338" y="171" text-anchor="end" font-size="10" fill="#9aabc6">${shortDate(lastAt)}</text>`}</svg><p class="trend-note">Daily · up to ${TREND_WINDOW} eligible general-practice answers · drills excluded</p><details><summary>Rolling accuracy &amp; speed</summary><div class="table-wrap"><table><thead><tr><th>Through</th><th>Answers</th><th>Mappings</th><th>Accuracy</th><th>Median</th></tr></thead><tbody>${[...points].reverse().map(p=>`<tr><td>${fullDate(p.at)}<br/><small>From ${fullDate(p.from)}</small></td><td>${p.stats.eligibleTotal}<br/><small>${p.stats.timedCount} timed</small></td><td>${p.mappings}</td><td>${p.stats.accuracy.toFixed(0)}%</td><td>${fmtTime(p.stats.medianMs)}</td></tr>`).join("")}</tbody></table></div></details></div>`;
+  }).join("");
 }
 function runResults(session: Session) {
   const r = sequenceResult(session, data.attempts);
