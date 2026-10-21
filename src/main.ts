@@ -56,7 +56,7 @@ try {
   recoveryRaw = null;
 } catch {
   storageProblem =
-    "Saved progress could not be loaded. Export a backup before resetting. New practice is disabled to protect it.";
+    "Saved progress could not be loaded. Export a backup to preserve it. New practice is disabled to protect it.";
 }
 const restoredUi = loadUiState(data,[() => sessionStorage.getItem(UI_STORE),() => localStorage.getItem(UI_STORE)]);
 let view: View = restoredUi.view,
@@ -804,7 +804,7 @@ function attemptList(attempts: Attempt[]) {
 }
 function settings() {
   chrome(
-    `<section class="settings-panel"><label>Session length<select id="minutes">${[1, 3, 5, 10].map((n) => `<option value="${n}" ${data.settings.minutes === n ? "selected" : ""}>${n} minutes</option>`).join("")}</select></label><label>Speed target<select id="speed">${[2, 3, 5, 8, 10].map((n) => `<option value="${n}" ${data.settings.speedTarget === n ? "selected" : ""}>${n} seconds</option>`).join("")}</select></label><label class="toggle-row"><span>Prioritize slower recall</span><input id="adaptive-speed" type="checkbox" ${data.settings.speedAdaptive ? "checked" : ""}/></label></section><section class="settings-panel"><button class="secondary" data-action="learning-guide">How learning works</button></section><section class="settings-panel"><button class="primary" data-action="export">Export a backup ↓</button><label class="file-label">Restore from a backup<input type="file" id="import" accept="application/json,.json"/></label></section><section class="settings-panel"><button class="primary" data-action="install">${installPrompt ? "Install app ↗" : "How to install ↗"}</button><p id="offline-status" class="muted">${navigator.onLine ? "Online" : "Offline"} · ${navigator.serviceWorker?.controller ? "Offline app ready" : "Offline setup available on the published site"}</p></section><section class="settings-panel"><button class="text-button danger" data-action="reset">Reset all progress</button></section><p class="footnote">Independent practice companion for Juan Tamariz’s Mnemonica. Deckwise v0.3 · <a href="https://www.me.uk/cards/" target="_blank" rel="noopener">Card artwork: Adrian Kennard (CC0)</a>.</p>`,
+    `<section class="settings-panel"><label>Session length<select id="minutes">${[1, 3, 5, 10].map((n) => `<option value="${n}" ${data.settings.minutes === n ? "selected" : ""}>${n} minutes</option>`).join("")}</select></label><label>Speed target<select id="speed">${[2, 3, 5, 8, 10].map((n) => `<option value="${n}" ${data.settings.speedTarget === n ? "selected" : ""}>${n} seconds</option>`).join("")}</select></label><label class="toggle-row"><span>Prioritize slower recall</span><input id="adaptive-speed" type="checkbox" ${data.settings.speedAdaptive ? "checked" : ""}/></label></section><section class="settings-panel"><button class="secondary" data-action="learning-guide">How learning works</button></section><section class="settings-panel"><button class="primary" data-action="export">Export a backup ↓</button><label class="file-label">Restore from a backup<input type="file" id="import" accept="application/json,.json"/></label></section><section class="settings-panel"><button class="primary" data-action="install">${installPrompt ? "Install app ↗" : "How to install ↗"}</button><p id="offline-status" class="muted">${navigator.onLine ? "Online" : "Offline"} · ${navigator.serviceWorker?.controller ? "Offline app ready" : "Offline setup available on the published site"}</p></section><p class="footnote">Independent practice companion for Juan Tamariz’s Mnemonica. Deckwise v0.3 · <a href="https://www.me.uk/cards/" target="_blank" rel="noopener">Card artwork: Adrian Kennard (CC0)</a>.</p>`,
   );
 }
 function download(name: string, content: string, type: string) {
@@ -1074,29 +1074,7 @@ function bind(root: ParentNode = app) {
                 '<h2>Install Deckwise</h2><p><strong>iPhone / iPad:</strong> open this site in Safari, tap Share, then “Add to Home Screen.” Enable “Open as Web App” if shown.</p><p><strong>Android:</strong> open in Chrome and choose “Install app” or “Add to Home screen” from the menu.</p><p><strong>Desktop:</strong> use the install icon in Chrome or Edge’s address bar.</p><p class="muted">Visit once online and wait for “Offline app ready” before relying on offline practice.</p>',
               );
             break;
-          case "reset":
-            if (
-              confirm(
-                "Delete all Deckwise history and settings from this device? Export a backup first.",
-              )
-            ) {
-              try {
-                localStorage.removeItem(STORE);
-                data = emptyData();
-                period = "7";
-                reportFormat = "multiple-choice";
-                sequenceReportFormat = "multiple-choice";
-                recoveryRaw = null;
-                storageConflict = false;
-                storageProblem = "";
-                render();
-              } catch {
-                showDialog(
-                  "<h2>Reset failed</h2><p>Your browser prevented changes to storage.</p>",
-                );
-              }
-            }
-            break;
+
         }
       }),
   );
