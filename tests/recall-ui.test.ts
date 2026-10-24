@@ -118,7 +118,7 @@ function appHarness(seed?: Data, persisted: HarnessStorage = {}) {
     for(const fn of listeners.get("keydown")??[])fn({key:value,target:{tagName:"BODY"},preventDefault(){prevented=true;},ctrlKey:false,metaKey:false,altKey:false});
     return prevented;
   };
-  return {app,begin,beginSequence,cardAnswer,click,key,state,choose,toggle:(id:string,open:boolean)=>{const d=app.querySelector("#"+id);assert.ok(d?.events.get("toggle"));d.open=open;d.events.get("toggle")();},writes:()=>({full:fullWrites,panel:panelWrites}),advance:(ms:number)=>{elapsed+=ms;},document,
+  return {app,begin,beginSequence,cardAnswer,click,key,state,choose,reveal:()=>{click("data-action","reveal");click("data-confirm-reveal",state().q.id);},toggle:(id:string,open:boolean)=>{const d=app.querySelector("#"+id);assert.ok(d?.events.get("toggle"));d.open=open;d.events.get("toggle")();},writes:()=>({full:fullWrites,panel:panelWrites}),advance:(ms:number)=>{elapsed+=ms;},document,
     visibility:(hidden:boolean)=>{document.hidden=hidden;for(const fn of listeners.get("visibilitychange")??[])fn();},
     reload:(delay=0)=>{for(const fn of windowListeners.get("pagehide")??[])fn();return appHarness(undefined,{local:stored,tab:tabStored,wallAt:wallAt+elapsed+delay,denyUi:persisted.denyUi});},
     reopen:()=>appHarness(undefined,{local:stored,wallAt:wallAt+elapsed}),scroll:(y:number)=>browserWindow.scrollY=y,scrollY:()=>browserWindow.scrollY,
@@ -168,7 +168,7 @@ test("direct input, keyboard, pause, hints and reveal use the shared practice li
  ui.click("data-action","pause");assert.equal(ui.state().paused,true);
  assert.equal(ui.click("data-digit","9"),false);assert.equal(ui.state().q.input.digits,"07");
  ui.advance(1000);ui.click("data-action","pause");
- ui.click("data-action","hint");ui.advance(500);ui.click("data-action","reveal");
+ ui.click("data-action","hint");ui.advance(500);ui.reveal();
  const a=ui.saved().attempts[0];assert.equal(a.interrupted,true);assert.equal(a.hint,true);assert.equal(a.revealed,true);
  assert.equal(a.answerFormat,"direct-recall");assert.equal(a.finalResult,"revealed");
  assert.ok(ui.app.innerHTML.includes("Answer revealed"));
@@ -245,7 +245,7 @@ test("sequence miss correction, reveal, pause and early finish preserve penaltie
  const ui=appHarness();ui.beginSequence();
  ui.click("data-rank","J");ui.advance(500);ui.click("data-suit","D");
  ui.advance(300);ui.cardAnswer();assert.equal(ui.saved().attempts[0].firstCorrect,false);assert.equal(ui.saved().attempts[0].elapsedMs,500);
- ui.click("data-action","pause");ui.advance(4000);ui.click("data-action","pause");ui.advance(200);ui.click("data-action","reveal");
+ ui.click("data-action","pause");ui.advance(4000);ui.click("data-action","pause");ui.advance(200);ui.reveal();
  ui.click("data-action","finish");
  const d=ui.saved();assert.equal(d.sessions[0].elapsedMs,1000);assert.equal(d.sessions[0].completed,false);
  assert.equal(d.attempts[0].finalResult,"corrected");assert.equal(d.attempts[1].finalResult,"revealed");assert.equal(d.attempts[1].interrupted,true);
@@ -349,7 +349,7 @@ test("suit submission respects pause, hint and reveal lifecycle",()=>{
  ui.advance(600);ui.key(suit);
  const a=ui.saved().attempts[0];assert.equal(a.firstCorrect,true);assert.equal(a.elapsedMs,600);
  assert.equal(a.hint,true);assert.equal(a.interrupted,true);
- ui.click("data-rank","K");ui.click("data-action","reveal");
+ ui.click("data-rank","K");ui.reveal();
  const count=ui.saved().attempts.length;
  assert.equal(ui.click("data-suit","S"),false);ui.key("S");assert.equal(ui.saved().attempts.length,count);
  assert.equal(ui.saved().attempts.at(-1).finalResult,"revealed");
@@ -379,7 +379,7 @@ test("sequence context follows answered cards without revealing the target on mi
   const target=ui.state().q.position;
   ui.click("data-rank","J");ui.click("data-suit","D");
   assert.equal(ui.state().q.position,target);assert.deepEqual(positions(),[start,second]);
-  ui.click("data-action","reveal");assert.deepEqual(positions(),[start,second]);
+  ui.reveal();assert.deepEqual(positions(),[start,second]);
   assert.equal(ui.app.innerHTML.includes('data-context-position="'+target+'"'),false);
   ui.click("data-action","next");assert.deepEqual(positions(),[second,target]);
   ui.click("data-action","pause");assert.deepEqual(positions(),[second,target]);
@@ -491,7 +491,7 @@ test("multiple-choice options and revealed questions survive reload without extr
  let ui=appHarness();ui.beginSequence("sequence-backward","multiple-choice",true);
  const id=ui.state().q.id,options=JSON.parse(JSON.stringify(ui.state().q.options));
  ui=ui.reload();assert.equal(ui.state().q.id,id);assert.deepEqual(JSON.parse(JSON.stringify(ui.state().q.options)),options);
- ui.click("data-action","pause");ui.advance(200);ui.click("data-action","reveal");
+ ui.click("data-action","pause");ui.advance(200);ui.reveal();
  ui=ui.reload();assert.equal(ui.state().q.done,true);assert.equal(ui.saved().attempts.length,1);
  ui.click("data-action","pause");ui.click("data-action","next");
  assert.equal(ui.saved().attempts.length,1);assert.notEqual(ui.state().q.id,id);
@@ -821,4 +821,31 @@ test('recheck entries identify remaining mapping counts, source drills and addit
  for(let i=0;i<4;i++)assert.equal(ui.app.querySelector('[data-recheck="source-'+i+'"]').disabled,false);
  ui.click('data-recheck','source-0');assert.equal(ui.state().active.focus.target,1);assert.equal(ui.state().q.position,3);
  assert.equal(ui.state().active.focus.passes,1);assert.deepEqual(validate(ui.saved()),ui.saved());
+});
+
+test('reveal requests can be cancelled without changing answers, input or grading in any quiz format',()=>{
+ for(const format of ['direct-recall','multiple-choice'])for(const mode of ['card-number','number-card','sequence-forward','sequence-backward']){
+  const ui=appHarness();if(mode.startsWith('sequence'))ui.beginSequence(mode,format);else ui.begin(mode,format);
+  if(format==='direct-recall'){if(mode==='card-number')ui.key('0');else ui.click('data-rank','J');}
+  const input=JSON.stringify(ui.state().q.input),id=ui.state().q.id,before=ui.saved();
+  ui.click('data-action','reveal');
+  assert.ok(ui.dialogHtml().includes('Reveal answer?'));assert.ok(ui.dialogHtml().includes('autofocus>Keep trying'));
+  assert.equal(ui.state().q.revealed,false);assert.equal(ui.state().q.id,id);assert.equal(JSON.stringify(ui.state().q.input),input);
+  assert.deepEqual(ui.saved(),before);ui.key('Enter');assert.deepEqual(ui.saved(),before);
+  ui.click('data-action','close-dialog');assert.equal(ui.state().q.done,false);assert.equal(ui.state().q.firstCorrect,null);
+  if(mode==='card-number'&&format==='direct-recall')ui.key('Escape');
+  ui.advance(1000);if(format==='multiple-choice')ui.click('data-answer',String(ui.state().q.position));else answerCurrent(ui);
+  const a=ui.saved().attempts[0];assert.equal(a.firstCorrect,true);assert.equal(a.revealed,false);assert.equal(a.hint,false);assert.equal(a.interrupted,false);
+ }
+});
+test('only explicit reveal confirmation records the reveal and preserves sequence penalties',()=>{
+ for(const format of ['direct-recall','multiple-choice'])for(const mode of ['card-number','number-card','sequence-forward','sequence-backward']){
+  const ui=appHarness();if(mode.startsWith('sequence'))ui.beginSequence(mode,format);else ui.begin(mode,format);
+  const id=ui.state().q.id;ui.advance(600);ui.click('data-action','reveal');assert.equal(ui.saved().attempts.length,0);
+  assert.equal(ui.dialogHtml().includes('5-second penalty'),mode.startsWith('sequence'));
+  ui.advance(400);ui.click('data-confirm-reveal',id);
+  const a=ui.saved().attempts[0];assert.equal(a.revealed,true);assert.equal(a.firstCorrect,false);assert.equal(a.finalResult,'revealed');assert.equal(a.elapsedMs,1000);
+  assert.ok(ui.app.innerHTML.includes('Answer revealed'));assert.deepEqual(validate(ui.saved()),ui.saved());
+  if(mode.startsWith('sequence')){ui.click('data-action','finish');assert.ok(ui.dialogHtml().includes('+5s'));}
+ }
 });
