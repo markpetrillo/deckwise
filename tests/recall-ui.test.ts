@@ -725,7 +725,7 @@ test("All formats shows independent progress charts and sparse or drill-only his
  const drill=appHarness(only);drill.click('data-view','progress');drill.click('data-report-format','direct-recall');
  const chart=drill.app.innerHTML.split('class="chart progress-trend"')[1].split('</div>')[0];
  assert.equal(drill.app.innerHTML.includes('Daily rolling general-practice accuracy'),false);
- assert.ok(drill.app.innerHTML.includes('No eligible general-practice answers in this view'));
+ assert.ok(drill.app.innerHTML.includes('No eligible general-practice answers in this graph range'));
  assert.ok(drill.app.innerHTML.includes('Drill 5'));
 });
 for(const format of ['direct-recall','multiple-choice'])for(const mode of ['card-number','number-card','mixed'])test(`${format} ${mode} benchmark covers every mapping once and survives misses and reload`,()=>{
@@ -781,7 +781,7 @@ test('daily chart keeps morning and late-night answers on the oldest selected ca
  const d=emptyData(),now=50*86400000,start=new Date(now);start.setHours(0,0,0,0);start.setDate(start.getDate()-6);
  const at=start.getTime(),s={id:'whole-day',mode:'card-number' as const,answerFormat:'direct-recall' as const,startedAt:at,endedAt:at+23*3600000,duration:60000};
  d.sessions=[s];d.attempts=Array.from({length:200},(_,i)=>({id:'whole'+i,sessionId:s.id,position:i%20+1,direction:'card-number' as const,answerFormat:'direct-recall' as const,at:at+(i<100?3600000:22*3600000)+i,firstCorrect:true,wrong:0,hint:false,revealed:false,elapsedMs:i<100?2000:8000,interrupted:false,recentExposure:false}));
- const ui=appHarness(d);ui.click('data-view','progress');ui.click('data-report-format','direct-recall');
+ const ui=appHarness(d);ui.click('data-view','progress');ui.click('data-report-format','direct-recall');ui.click('data-trend-period','7');
  const chart=ui.app.innerHTML.split('class="chart progress-trend"')[1].split('</details>')[0];
  assert.ok(chart.includes('<td>200<br/>'));assert.ok(chart.includes('5.0s'));assert.ok(chart.includes('all eligible general-practice answers'));
 });
@@ -848,4 +848,36 @@ test('only explicit reveal confirmation records the reveal and preserves sequenc
   assert.ok(ui.app.innerHTML.includes('Answer revealed'));assert.deepEqual(validate(ui.saved()),ui.saved());
   if(mode.startsWith('sequence')){ui.click('data-action','finish');assert.ok(ui.dialogHtml().includes('+5s'));}
  }
+});
+
+function longTrendSeed() {
+ const d=emptyData(),now=200*86400000+12*3600000;d.settings.answerFormat='direct-recall';
+ for(let age=0;age<100;age++){
+  const date=new Date(now);date.setHours(1,0,0,0);date.setDate(date.getDate()-age);
+  const at=date.getTime(),id='long-'+age;
+  d.sessions.push({id,mode:'card-number',answerFormat:'direct-recall',startedAt:at,endedAt:at+2000,duration:60000});
+  d.attempts.push({id:'answer-'+age,sessionId:id,position:age%52+1,direction:'card-number',answerFormat:'direct-recall',at:at+1000,firstCorrect:true,wrong:0,hint:false,revealed:false,elapsedMs:2000,interrupted:false,recentExposure:false});
+ }
+ return {d,now};
+}
+test('graph defaults to 30 whole days independently, expands beyond 30 points and remembers its own range',()=>{
+ const {d,now}=longTrendSeed();let ui=appHarness(d,{wallAt:now});ui.click('data-view','progress');
+ const chart=()=>ui.app.innerHTML.split('class="chart progress-trend"')[1].split('</details>')[0];
+ const days=()=>(chart().match(/<tr><td>/g)??[]).length;
+ assert.ok(chart().includes('data-trend-period="30" aria-pressed="true"'));assert.equal(days(),30);
+ assert.ok(ui.app.innerHTML.includes('<strong>7</strong><span>Questions answered</span>'));
+ ui.click('data-trend-period','90');assert.equal(days(),90);assert.equal(ui.saved().settings.statsPeriod,d.settings.statsPeriod);
+ ui.click('data-trend-period','all');assert.equal(days(),100);
+ ui.click('data-trend-period','7');assert.equal(days(),7);const seven=chart();
+ ui.click('data-stats-period','all');assert.equal(chart(),seven);assert.ok(ui.app.innerHTML.includes('<strong>100</strong><span>Questions answered</span>'));
+ ui=ui.reload();assert.ok(chart().includes('data-trend-period="7" aria-pressed="true"'));assert.equal(days(),7);
+ ui=ui.reopen();assert.ok(chart().includes('data-trend-period="7" aria-pressed="true"'));assert.deepEqual(ui.saved().attempts,d.attempts);
+});
+test('older chart evidence remains visible when the report week is empty and an empty chart can change ranges',()=>{
+ const {d,now}=longTrendSeed();d.sessions=d.sessions.filter(s=>s.id==='long-20');d.attempts=d.attempts.filter(a=>a.sessionId==='long-20');
+ const ui=appHarness(d,{wallAt:now});ui.click('data-view','progress');
+ assert.ok(ui.app.innerHTML.includes('Daily accuracy &amp; speed'));assert.ok(ui.app.innerHTML.includes('No results in this view'));
+ ui.click('data-trend-period','7');assert.ok(ui.app.innerHTML.includes('No eligible general-practice answers in this graph range'));
+ ui.click('data-trend-period','30');assert.ok(ui.app.innerHTML.includes('Daily accuracy &amp; speed'));
+ assert.equal(ui.saved().attempts.length,1);
 });

@@ -24,6 +24,7 @@ export interface UiState {
   filter: ReportFilter; positionFilter: "all" | "card-number" | "number-card";
   sequenceFilter: "sequence" | SequenceDirection;
   reportFormat: AnswerFormat | "all"; sequenceReportFormat: AnswerFormat | "all";
+  trendPeriod:"7"|"30"|"90"|"all";
   cardSort: CardSort; historyLimit: number; scrollY: number; resume?: ResumeState;
 }
 const object = (value: unknown): value is Record<string,unknown> => !!value && typeof value === "object" && !Array.isArray(value);
@@ -35,7 +36,7 @@ function pick<T extends string>(value: unknown, values: readonly T[], fallback: 
 export function defaultUiState(data: Data): UiState {
   return {version:1,view:"practice",deckMode:"browse",deckIndex:0,practiceType:"position",cardsExpanded:false,historyExpanded:false,sequenceDirection:"sequence-forward",sequenceStart:"beginning",
     filter:"all",positionFilter:"all",sequenceFilter:"sequence",reportFormat:formatOf(data.settings),
-    sequenceReportFormat:data.settings.sequenceAnswerFormat ?? "multiple-choice",cardSort:"position",historyLimit:12,scrollY:0};
+    sequenceReportFormat:data.settings.sequenceAnswerFormat ?? "multiple-choice",cardSort:"position",historyLimit:12,scrollY:0,trendPeriod:"30"};
 }
 /** UI recovery is optional; malformed preferences must never affect answer history. */
 export function restoreUiState(value: unknown, data: Data): UiState {
@@ -56,6 +57,7 @@ export function restoreUiState(value: unknown, data: Data): UiState {
     sequenceFilter:pick(value.sequenceFilter,["sequence","sequence-forward","sequence-backward"],d.sequenceFilter),
     reportFormat:pick(value.reportFormat,formats,d.reportFormat),
     sequenceReportFormat:pick(value.sequenceReportFormat,formats,d.sequenceReportFormat),
+    trendPeriod:pick(value.trendPeriod,["7","30","90","all"],d.trendPeriod),
     cardSort:pick(value.cardSort,["position","mastery","speed","accuracy","misses"],d.cardSort),
     historyLimit:Number.isInteger(value.historyLimit) && Number(value.historyLimit) >= 12 && Number(value.historyLimit) <= 10000 ? Number(value.historyLimit) : 12,
     scrollY:number(value.scrollY) && value.scrollY <= 10000000 ? value.scrollY : 0,

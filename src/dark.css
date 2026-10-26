@@ -202,3 +202,5 @@ details.report-section{margin-top:18px}details.report-section>summary{min-height
 .recheck-intro{font-size:12px;line-height:1.6;color:var(--muted);margin:0 0 6px}.recheck-item{display:grid;gap:7px}.recheck-item+.recheck-item{padding-top:12px;border-top:1px solid var(--line)}.recheck-panel details .recheck-item{margin-top:12px}.recheck-panel details summary{font-size:12px;min-height:44px;padding:12px 0;cursor:pointer}.drill-evidence{font-size:12px;line-height:1.6;color:var(--muted);margin:16px 0 4px}.benchmark-note{font-size:11px}
 
 .practice-actions .reveal-button{background:transparent;border-color:transparent;color:var(--muted);font-size:11px;padding:10px 12px}.practice-actions .reveal-button:hover:not(:disabled){background:transparent;color:#c1d2e8}
+
+.trend-range{margin:14px 0}.trend-range .selector{padding:4px;gap:3px}.trend-range .selector button{min-height:44px;padding:8px 3px;font-size:11px}

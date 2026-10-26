@@ -59,3 +59,11 @@ test("stale recovery cannot overwrite a stored miss or its timing",()=>{
  }
  assert.deepEqual(data,before);
 });
+
+test('chart history preference defaults to thirty days, validates independently and preserves older UI state',()=>{
+ const d=emptyData(),before=structuredClone(d);
+ assert.equal(defaultUiState(d).trendPeriod,'30');assert.equal(restoreUiState({version:1,view:'progress'},d).trendPeriod,'30');
+ for(const range of ['7','30','90','all'])assert.equal(restoreUiState({version:1,trendPeriod:range},d).trendPeriod,range);
+ for(const range of ['bad',90,null,{}])assert.equal(restoreUiState({version:1,trendPeriod:range},d).trendPeriod,'30');
+ assert.deepEqual(d,before);
+});
