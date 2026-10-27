@@ -41,6 +41,7 @@ import {UI_STORE, loadUiState, type UiState, type QuestionState, type View, type
 import {weakestMappings,focusPrompt,drillSummary} from "./focus";
 import {rechecks,benchmarkMappings,confusionPairs,benchmarkResult} from "./learning";
 import {learningGuide} from "./learning-guide";
+import {practiceRecommendation} from "./guidance";
 import { uiIcon } from "./icons";
 import { progressTrend, directionComparison, reportEvidence, cardRanking, mappingInsights, type CardSort, sequenceRuns } from "./reporting";
 const app = document.querySelector<HTMLDivElement>("#app")!;
@@ -66,6 +67,7 @@ let view: View = restoredUi.view,
   historyLimit = restoredUi.historyLimit;
 let cardSort: CardSort = restoredUi.cardSort;
 let trendPeriod=restoredUi.trendPeriod;
+let focusBothDirections=restoredUi.focusBothDirections;
 let reportFormat: AnswerFormat | "all" = restoredUi.reportFormat;
 let sequenceReportFormat: AnswerFormat | "all" = restoredUi.sequenceReportFormat;
 let positionFilter = restoredUi.positionFilter, sequenceFilter = restoredUi.sequenceFilter;
@@ -147,7 +149,7 @@ function saveUi() {
   else positionFilter = filter as typeof positionFilter;
   const state: UiState = {version:1,view,deckMode,deckIndex,filter:filter as ReportFilter,
     positionFilter,sequenceFilter,sequenceDirection,sequenceStart,reportFormat,sequenceReportFormat,
-    cardSort,trendPeriod,historyLimit,practiceType,cardsExpanded,historyExpanded,scrollY:Math.max(0,window.scrollY || 0),
+    cardSort,trendPeriod,focusBothDirections,historyLimit,practiceType,cardsExpanded,historyExpanded,scrollY:Math.max(0,window.scrollY || 0),
     ...(active && q && !storageConflict && !storageProblem ? {resume:{sessionId:active.id,elapsed:sessionElapsed,
       question:q,source:sequenceSource,recent:recent.slice(-10000),exposures:[...lastExposure],savedAt:Date.now()}} : {})};
   // The active question belongs to this tab; only ordinary UI preferences are
@@ -191,15 +193,32 @@ function render() {
 function selector(options: readonly (readonly [string,string])[], value:string, attribute:string, label:string) {
   return `<div class="segmented selector columns-${options.length}" role="group" aria-label="${label}">${options.map(([id,text])=>`<button data-${attribute}="${id}" aria-pressed="${value===id}" class="${value===id?"selected":""}">${text}</button>`).join("")}</div>`;
 }
+function practiceMode():Mode{return practiceType==="sequence"?sequenceDirection:data.settings.mode;}
+function practiceFormat():AnswerFormat{return practiceType==="sequence"?data.settings.sequenceAnswerFormat??"multiple-choice":formatOf(data.settings);}
+function suggestedPractice() {
+ const r=practiceRecommendation(data,practiceMode(),practiceFormat());
+ return `<section class="suggested-practice" aria-label="Suggested next"><h2>Suggested next</h2><strong>${esc(r.title)}</strong><p>${esc(r.reason)}</p><small>${modeName(r.mode)} · ${formatName(r.format)} · optional</small><button class="primary" data-action="start-suggestion" ${storageProblem?"disabled":""}>${esc(r.button)}</button></section>`;
+}
+function startSuggestedPractice() {
+ const r=practiceRecommendation(data,practiceMode(),practiceFormat());
+ if(r.kind==="recheck"){
+  const check=rechecks(data).find(c=>c.sourceId===r.sourceId&&c.stage===r.stage&&c.ready);
+  if(check)startPlannedFocus(check.mappings,check.format,{kind:"recheck",passes:1,sourceSessionId:check.sourceId,recheckStage:check.stage});
+ }else if(r.kind==="weakest"||r.kind==="confusion")startPlannedFocus(r.mappings!,r.format,{kind:r.kind});
+ else if(r.kind==="benchmark")start(r.mode,1,undefined,r.format,undefined,benchmarkMappings(r.mode));
+ else if(r.kind==="sequence"){sequenceDirection=r.mode as SequenceDirection;startSequence();}
+ else {data.settings.mode=r.mode;start(r.mode,1,undefined,r.format);}
+}
 function practiceSetup() {
-  const type=selector([["position","Position practice"],["sequence","Sequence quiz"]],practiceType,"practice-type","Quiz type");
-  if(practiceType==="sequence") {
-    chrome(`<section class="selection-panel practice-home">${type}${selector([["sequence-forward","Forward"],["sequence-backward","Backward"]],sequenceDirection,"sequence-direction","Sequence direction")}${formatToggle(data.settings.sequenceAnswerFormat??"multiple-choice","sequence")}${selector([["beginning","From "+(sequenceDirection==="sequence-forward"?"first card":"last card")],["random","Random start"]],sequenceStart,"sequence-start","Starting position")}<button class="primary start" data-action="start-sequence" ${storageProblem?"disabled":""}>Start 52-card run</button></section>${practiceRechecks()}`);
-    return;
-  }
-  const format=formatOf(data.settings);
-  const due=STACK.reduce((n,_,i)=>n+(["card-number","number-card"] as const).filter(dir=>(data.settings.mode==="mixed"||dir===data.settings.mode)&&(data.memory[key(i+1,dir,format)]?.due??Infinity)<=Date.now()).length,0);
-  chrome(`<section class="selection-panel practice-home">${type}${selector([["mixed","Mixed"],["card-number","Card → number"],["number-card","Number → card"]],data.settings.mode,"mode","Practice direction")}${formatToggle(format,"practice")}${selector([["1","1 min"],["3","3 min"],["5","5 min"],["10","10 min"]],String(data.settings.minutes),"minutes","Session length")}<button class="primary start" data-action="start" ${storageProblem?"disabled":""}>Start ${data.settings.minutes}-minute session</button>${due?`<span class="quiet-count">${due} due</span>`:""}<button class="secondary benchmark-start" data-action="start-benchmark" ${storageProblem?"disabled":""}>Benchmark · ${data.settings.mode==="mixed"?104:52} prompts</button><span class="quiet-count benchmark-note">${data.settings.mode==="mixed"?"All 52 cards in both directions":"All 52 cards once"} · no time limit</span></section>${practiceRechecks()}`);
+ const type=`<section class="selection-panel">${selector([["position","Position practice"],["sequence","Sequence quiz"]],practiceType,"practice-type","Quiz type")}</section>`;
+ const guidance=suggestedPractice();
+ if(practiceType==="sequence") {
+  chrome(`${type}${guidance}<section class="selection-panel practice-home"><h2 class="exercise-heading">Sequence run</h2>${selector([["sequence-forward","Forward"],["sequence-backward","Backward"]],sequenceDirection,"sequence-direction","Sequence direction")}${formatToggle(data.settings.sequenceAnswerFormat??"multiple-choice","sequence")}${selector([["beginning","From "+(sequenceDirection==="sequence-forward"?"first card":"last card")],["random","Random start"]],sequenceStart,"sequence-start","Starting position")}<button class="primary start" data-action="start-sequence" ${storageProblem?"disabled":""}>Start 52-card run</button></section>${needsWork()}${practiceRechecks()}`);
+  return;
+ }
+ const format=formatOf(data.settings);
+ const due=STACK.reduce((n,_,i)=>n+(["card-number","number-card"] as const).filter(dir=>(data.settings.mode==="mixed"||dir===data.settings.mode)&&(data.memory[key(i+1,dir,format)]?.due??Infinity)<=Date.now()).length,0);
+ chrome(`${type}${guidance}<section class="selection-panel practice-home"><h2 class="exercise-heading">Adaptive practice</h2>${selector([["mixed","Mixed"],["card-number","Card → number"],["number-card","Number → card"]],data.settings.mode,"mode","Practice direction")}${formatToggle(format,"practice")}${selector([["1","1 min"],["3","3 min"],["5","5 min"],["10","10 min"]],String(data.settings.minutes),"minutes","Session length")}<button class="primary start" data-action="start" ${storageProblem?"disabled":""}>Start ${data.settings.minutes}-minute session</button>${due?`<span class="quiet-count">${due} due</span>`:""}</section>${needsWork()}${practiceRechecks()}<section class="selection-panel benchmark-panel"><h2 class="exercise-heading">Benchmark</h2><p>A full-coverage baseline or progress check. Every card once ${data.settings.mode==="mixed"?"in each direction":"in the selected direction"}, with no adaptive repeats or time limit.</p><button class="secondary benchmark-start" data-action="start-benchmark" ${storageProblem?"disabled":""}>Benchmark · ${data.settings.mode==="mixed"?104:52} prompts</button><details><summary>How it works</summary><p>Mixed checks all 104 card/direction mappings. A card’s opposite direction appears 52 prompts later. Normal first-answer, hint and reveal rules apply. Compare completed benchmarks in Progress using the same direction and answer format.</p></details></section>`);
 }
 function practice() {
   if(!active){practiceSetup();return;}
@@ -422,6 +441,7 @@ function drillResults(session:Session,attempts:Attempt[]) {
  const title=focus.kind==="recheck"?focus.completed?"Recheck complete":"Recheck ended":focus.completed?"Drill complete":"Drill ended";
  return `<h2>${title}</h2><p>${attempts.length}/${focus.target} answers · ${focus.mappings.length} mappings · ${rounds} ${rounds===1?"round":"rounds"}<br/>${formatName(formatOf(session))} · ${runTime(focus.elapsedMs)}</p><div class="summary-grid"><div><strong>${practice.eligibleTotal?practice.accuracy.toFixed(0)+"%":"—"}</strong><span>First-try accuracy</span></div><div><strong>${fmtTime(practice.medianMs)}</strong><span>Practice median</span></div><div><strong>${practice.wrong}</strong><span>First misses</span></div><div><strong>${isSequence(session.mode)?runTime(focus.elapsedMs+attempts.reduce((n,a)=>n+a.wrong+(a.revealed?1:0),0)*5000):practice.hints}</strong><span>${isSequence(session.mode)?"Scored time":"Hints"}</span></div></div><p class="drill-evidence">${independent.eligibleTotal} independent samples · ${independent.recent} recently seen</p><p class="footnote">Practice results include repeats. First-try accuracy needs no hints or reveals; mastery uses fresh recall. Timing still excludes interruptions.</p>`;
 }
+function sessionNextActions(){return `<div class="dialog-actions"><button class="primary" data-action="summary-practice">Continue practice →</button><button class="secondary" data-action="summary-progress">View progress</button></div>`;}
 function finish(completed = false) {
   if (!active) return;
   tick();
@@ -442,18 +462,18 @@ function finish(completed = false) {
     s = summary(attempts);
   render();
   if(session.focus){
-    showDialog(`${drillResults(session,attempts)}<button class="primary" data-action="summary-progress">View progress →</button>`);return;
+    showDialog(`${drillResults(session,attempts)}${sessionNextActions()}`);return;
   }
   if(session.benchmark){
     const result=benchmarkResult(session,data.attempts),timed=attempts.filter(timingEligible);
-    showDialog(`<h2>${result.complete?"Benchmark complete":"Benchmark ended"}</h2><p>${result.total}/${result.target} · ${modeName(session.mode)} · ${formatName(formatOf(session))}</p><p class="muted">${s.eligibleTotal} eligible · ${s.timedCount} timed</p><div class="summary-grid"><div><strong>${s.eligibleTotal?s.accuracy.toFixed(0)+"%":"—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median recall</span></div><div><strong>${timed.length?Math.round(timed.filter(a=>a.elapsedMs!<=data.settings.speedTarget*1000).length/timed.length*100)+"%":"—"}</strong><span>Within ${data.settings.speedTarget}s</span></div><div><strong>${runTime(sessionElapsed)}</strong><span>Active time</span></div></div><button class="primary" data-action="summary-progress">View progress →</button>`);return;
+    showDialog(`<h2>${result.complete?"Benchmark complete":"Benchmark ended"}</h2><p>${result.total}/${result.target} · ${modeName(session.mode)} · ${formatName(formatOf(session))}</p><p class="muted">${s.eligibleTotal} eligible · ${s.timedCount} timed</p><div class="summary-grid"><div><strong>${s.eligibleTotal?s.accuracy.toFixed(0)+"%":"—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median recall</span></div><div><strong>${timed.length?Math.round(timed.filter(a=>a.elapsedMs!<=data.settings.speedTarget*1000).length/timed.length*100)+"%":"—"}</strong><span>Within ${data.settings.speedTarget}s</span></div><div><strong>${runTime(sessionElapsed)}</strong><span>Active time</span></div></div>${sessionNextActions()}`);return;
   }
   if (session.runTarget) {
-    showDialog(`${runResults(session)}<button class="primary" data-action="summary-progress">View progress →</button>`);
+    showDialog(`${runResults(session)}${sessionNextActions()}`);
     return;
   }
   showDialog(
-    `<h2>Session results</h2><p>${s.total} questions answered in ${timer(sessionElapsed)} of active practice.</p><div class="summary-grid"><div><strong>${s.eligibleTotal ? s.accuracy.toFixed(0) + "%" : "—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median recall</span></div><div><strong>${s.wrong}</strong><span>First-answer misses</span></div><div><strong>${s.hints}</strong><span>Hints used</span></div></div><button class="primary" data-action="summary-progress">View progress →</button>`,
+    `<h2>Session results</h2><p>${s.total} questions answered in ${timer(sessionElapsed)} of active practice.</p><div class="summary-grid"><div><strong>${s.eligibleTotal ? s.accuracy.toFixed(0) + "%" : "—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median recall</span></div><div><strong>${s.wrong}</strong><span>First-answer misses</span></div><div><strong>${s.hints}</strong><span>Hints used</span></div></div>${sessionNextActions()}`,
   );
 }
 function tick() {
@@ -648,23 +668,23 @@ function directionInsights() {
   }).join("")}</div>${comparison.reason!=="insufficient"?`<div class="practice-focus"><p>${note}</p>${subset?`<p>${subset}</p>`:""}</div>`:""}</section>`;
 }
 function weakestSet() {
- const directions:Direction[]=filter==="sequence"?["sequence-forward","sequence-backward"]:filter==="all"?["card-number","number-card"]:[filter as Direction];
- let format:AnswerFormat=reportAnswerFormat()==="all"?(filter.startsWith("sequence")?data.settings.sequenceAnswerFormat??"multiple-choice":formatOf(data.settings)):reportAnswerFormat() as AnswerFormat;
- const evidence=filtered();let mappings=weakestMappings(evidence,directions,format,data.settings.speedTarget,Date.now(),data.settings.focusSize??5);
- if(!mappings.length&&reportAnswerFormat()==="all"){format=format==="direct-recall"?"multiple-choice":"direct-recall";mappings=weakestMappings(evidence,directions,format,data.settings.speedTarget,Date.now(),data.settings.focusSize??5);}
- return {format,mappings};
+ const directions:Direction[]=practiceType==="sequence"?(focusBothDirections?["sequence-forward","sequence-backward"]:[sequenceDirection]):data.settings.mode==="mixed"?["card-number","number-card"]:[data.settings.mode];
+ const format=practiceFormat();
+ return {format,mappings:weakestMappings(data.attempts,directions,format,data.settings.speedTarget,Date.now(),data.settings.focusSize??5)};
 }
 function needsWork() {
- const {format,mappings}=weakestSet();if(!mappings.length)return "";
- return `<section class="weakest-panel" aria-label="Needs work">${selector([["5","5"],["6","6"],["8","8"]],String(data.settings.focusSize??5),"focus-size","Drill size")}<div class="weakest-list">${mappings.map(m=>`<button data-position="${m.position}" class="weakest-row"><span><strong>${m.direction==="card-number"?cardName(m.position):"Position "+m.position}</strong><small>${modeName(m.direction)}</small></span><span><strong>${m.model.category}</strong><small>${fmtTime(m.model.recent.medianMs)}</small></span></button>`).join("")}</div><button class="primary" data-action="drill-weakest" ${storageProblem?"disabled":""}>Drill weakest ${mappings.length}</button>${reportAnswerFormat()==="all"?`<span class="quiet-count">${formatName(format)}</span>`:""}</section>`;
+ const {format,mappings}=weakestSet();
+ return `<section class="weakest-panel" aria-label="Drill weakest"><h2 class="exercise-heading">Drill weakest</h2>${practiceType==="sequence"?selector([["selected","Selected direction"],["both","Both directions"]],focusBothDirections?"both":"selected","focus-sequence-scope","Sequence drill directions"):""}${selector([["5","5"],["6","6"],["8","8"]],String(data.settings.focusSize??5),"focus-size","Drill size")}<p>${mappings.length?`${mappings.length} mappings · 3 rounds · ${formatName(format)}. Recent accuracy and recall speed choose the set. A mapping is one card in one direction.`:"Build some history in this direction and format first."}</p>${mappings.length?`<details><summary>View selected mappings (${mappings.length})</summary><div class="weakest-list">${mappings.map(m=>`<div class="weakest-row"><span><strong>${m.direction==="card-number"?cardName(m.position):"Position "+m.position}</strong><small>${modeName(m.direction)}</small></span><span><strong>${m.model.category}</strong><small>${fmtTime(m.model.recent.medianMs)}</small></span></div>`).join("")}</div></details><button class="primary" data-action="drill-weakest" ${storageProblem?"disabled":""}>Drill weakest ${mappings.length}</button><small class="exercise-note">Train now, then recheck after 30 minutes and the next day.</small>`:""}</section>`;
 }
-function startFocus() {
- const {format,mappings}=weakestSet();if(!mappings.length)return;
- const focus=mappings.map(({position,direction})=>({position,direction}));
+function startPlannedFocus(focus:FocusMapping[],format:AnswerFormat,details?:Pick<FocusPlan,"kind"|"passes"|"sourceSessionId"|"recheckStage">) {
+ if(!focus.length)return;
  practiceType=isSequence(focus[0].direction)?"sequence":"position";
  const mode:Mode=practiceType==="sequence"?focus[0].direction:new Set(focus.map(m=>m.direction)).size>1?"mixed":focus[0].direction;
  if(practiceType==="sequence")data.settings.sequenceAnswerFormat=format;else data.settings.answerFormat=format;
- start(mode,1,focus,format);
+ start(mode,1,focus,format,details);
+}
+function startFocus() {
+ const {format,mappings}=weakestSet();startPlannedFocus(mappings.map(({position,direction})=>({position,direction})),format);
 }
 function practiceRechecks() {
  const format=practiceType==="sequence"?data.settings.sequenceAnswerFormat??"multiple-choice":formatOf(data.settings);
@@ -677,7 +697,7 @@ function practiceRechecks() {
   const direction=new Set(r.mappings.map(m=>m.direction)).size>1?"Both directions":modeName(r.mappings[0].direction);
   return `<div class="recheck-item"><button class="secondary" data-recheck="${esc(r.sourceId)}" data-recheck-stage="${r.stage}" ${!r.ready||storageProblem?"disabled":""}>Recheck ${r.mappings.length} ${r.mappings.length===1?"mapping":"mappings"}</button><small>${direction} · ${available}<br/>${r.stage==="later"?"After a 30-minute delay":"Next-day follow-up"} · ${esc(sourceDate)} drill</small></div>`;
  };
- return `<section class="recheck-panel" aria-label="Delayed rechecks"><p class="recheck-intro">One question per mapping, 30 minutes after a drill and again the next day.</p>${reviews.slice(0,3).map(row).join("")}${reviews.length>3?`<details><summary>More rechecks (${reviews.length-3})</summary>${reviews.slice(3).map(row).join("")}</details>`:""}</section>`;
+ return `<section class="recheck-panel" aria-label="Delayed rechecks"><h2 class="exercise-heading">Recheck what stuck</h2><p class="recheck-intro">One question per mapping, 30 minutes after a drill and again the next day.</p>${reviews.slice(0,3).map(row).join("")}${reviews.length>3?`<details><summary>More rechecks (${reviews.length-3})</summary>${reviews.slice(3).map(row).join("")}</details>`:""}</section>`;
 }
 function selectedConfusions() {
  let format=reportAnswerFormat()==="all"?(filter.startsWith("sequence")?data.settings.sequenceAnswerFormat??"multiple-choice":formatOf(data.settings)):reportAnswerFormat() as AnswerFormat;
@@ -723,7 +743,7 @@ function progress() {
     .filter(session => (filter === "all" ? !isSequence(session.mode) : filter === "sequence" ? isSequence(session.mode) : session.mode === filter || session.focus?.mappings.some(m=>m.direction===filter) || (!isSequence(filter) && session.mode === "mixed")) &&
       (period === "all" || session.startedAt >= Date.now() - Number(period) * 86400000) && (reportAnswerFormat() === "all" || formatOf(session) === reportAnswerFormat()));
   chrome(
-    `<section class="progress-controls" aria-label="Progress filters"><div class="segmented quiz-type-toggle" role="group" aria-label="Quiz type">${[["position","Position practice"],["sequence","Sequence quiz"]].map(([id,label]) => `<button data-stats-type="${id}" aria-pressed="${(filter.startsWith("sequence") ? "sequence" : "position") === id}" class="${(filter.startsWith("sequence") ? "sequence" : "position") === id ? "selected" : ""}">${label}</button>`).join("")}</div><div class="segmented practice-toggle position-directions" role="group" aria-label="${filter.startsWith("sequence") ? "Sequence direction" : "Practice type"}">${(filter.startsWith("sequence") ? [["sequence-forward","Forward"],["sequence-backward","Backward"],["sequence","Combined"]] : [["all","Mixed"],["card-number","Card → number"],["number-card","Number → card"]]).map(([id,label]) => `<button data-stats-direction="${id}" aria-pressed="${filter === id}" class="${filter === id ? "selected" : ""}">${label}</button>`).join("")}</div>${formatToggle(reportAnswerFormat(),"report")}<div class="segmented stats-period-toggle" role="group" aria-label="Statistics period">${[["7","7 days"],["30","30 days"],["all","All time"]].map(([id,label]) => `<button data-stats-period="${id}" aria-pressed="${period === id}" class="${period === id ? "selected" : ""}">${label}</button>`).join("")}</div>${resultsCoverage(attempts)}</section><div class="summary-grid stat-cards"><div><strong>${s.eligibleTotal ? s.accuracy.toFixed(0) + "%" : "—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median recall</span></div><div><strong>${s.total}</strong><span>Questions answered</span></div><div><strong>${slow.length ? Math.round((within / slow.length) * 100) + "%" : "—"}</strong><span>Within ${data.settings.speedTarget}s target</span></div></div>${needsWork()}${confusionsPanel()}${filter.startsWith("sequence")?"":trend()}${!s.total ? emptyResults() : `${filter.startsWith("sequence") ? sequenceTrend() : ""}<div class="report-notes"><span>${s.wrong} first-answer misses</span><span>${s.hints} questions with hints</span><span>${new Set(attempts.map((a) => a.position)).size}/52 cards practiced</span></div>`}${filter.startsWith("sequence") ? sequenceBests() : directionInsights()}${filter.startsWith("sequence")?"":benchmarkHistory(attempts)}${perCardResults(attempts)}<details id="session-history" data-disclosure="history" class="report-section" ${historyExpanded?"open":""}><summary>Sessions (${sessions.length})</summary>${
+    `<section class="progress-controls" aria-label="Progress filters"><div class="segmented quiz-type-toggle" role="group" aria-label="Quiz type">${[["position","Position practice"],["sequence","Sequence quiz"]].map(([id,label]) => `<button data-stats-type="${id}" aria-pressed="${(filter.startsWith("sequence") ? "sequence" : "position") === id}" class="${(filter.startsWith("sequence") ? "sequence" : "position") === id ? "selected" : ""}">${label}</button>`).join("")}</div><div class="segmented practice-toggle position-directions" role="group" aria-label="${filter.startsWith("sequence") ? "Sequence direction" : "Practice type"}">${(filter.startsWith("sequence") ? [["sequence-forward","Forward"],["sequence-backward","Backward"],["sequence","Combined"]] : [["all","Mixed"],["card-number","Card → number"],["number-card","Number → card"]]).map(([id,label]) => `<button data-stats-direction="${id}" aria-pressed="${filter === id}" class="${filter === id ? "selected" : ""}">${label}</button>`).join("")}</div>${formatToggle(reportAnswerFormat(),"report")}<div class="segmented stats-period-toggle" role="group" aria-label="Statistics period">${[["7","7 days"],["30","30 days"],["all","All time"]].map(([id,label]) => `<button data-stats-period="${id}" aria-pressed="${period === id}" class="${period === id ? "selected" : ""}">${label}</button>`).join("")}</div>${resultsCoverage(attempts)}</section><div class="summary-grid stat-cards"><div><strong>${s.eligibleTotal ? s.accuracy.toFixed(0) + "%" : "—"}</strong><span>Independent accuracy</span></div><div><strong>${fmtTime(s.medianMs)}</strong><span>Median recall</span></div><div><strong>${s.total}</strong><span>Questions answered</span></div><div><strong>${slow.length ? Math.round((within / slow.length) * 100) + "%" : "—"}</strong><span>Within ${data.settings.speedTarget}s target</span></div></div>${confusionsPanel()}${filter.startsWith("sequence")?"":trend()}${!s.total ? emptyResults() : `${filter.startsWith("sequence") ? sequenceTrend() : ""}<div class="report-notes"><span>${s.wrong} first-answer misses</span><span>${s.hints} questions with hints</span><span>${new Set(attempts.map((a) => a.position)).size}/52 cards practiced</span></div>`}${filter.startsWith("sequence") ? sequenceBests() : directionInsights()}${filter.startsWith("sequence")?"":benchmarkHistory(attempts)}${perCardResults(attempts)}<details id="session-history" data-disclosure="history" class="report-section" ${historyExpanded?"open":""}><summary>Sessions (${sessions.length})</summary>${
       sessions.length
         ? `<div class="history-list">${sessions
             .slice(0, historyLimit)
@@ -917,6 +937,7 @@ function setStatsPeriod(next: "7" | "30" | "all") {
   render();
 }
 function bind(root: ParentNode = app) {
+ root.querySelectorAll<HTMLElement>("[data-focus-sequence-scope]").forEach(b=>b.onclick=()=>{focusBothDirections=b.dataset.focusSequenceScope==="both";render();});
  root.querySelectorAll<HTMLElement>("[data-confirm-reveal]").forEach(b=>b.onclick=()=>{
   const id=b.dataset.confirmReveal;
   document.querySelector<HTMLDialogElement>("dialog")?.close();
@@ -1014,6 +1035,8 @@ function bind(root: ParentNode = app) {
             practiceType="sequence";route("practice");break;
           case "position-setup":
             practiceType="position";route("practice");break;
+          case "start-suggestion":
+            startSuggestedPractice();break;
           case "drill-weakest":
             startFocus();break;
           case "learning-guide":
@@ -1074,6 +1097,8 @@ function bind(root: ParentNode = app) {
             historyLimit += 20;
             render();
             break;
+          case "summary-practice":
+            document.querySelector<HTMLDialogElement>("dialog")?.close();route("practice");break;
           case "summary-progress":
             document.querySelector<HTMLDialogElement>("dialog")?.close();
             route("progress");
