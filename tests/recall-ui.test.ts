@@ -916,3 +916,32 @@ test('a recurring confusion suggestion launches the pair and a sequence suggesti
  seq.attempts=STACK.map((_,i)=>({id:'s'+i,sessionId:'forward',position:i+1,direction:'sequence-forward',answerFormat:'direct-recall',at:now-600000+i*1000,elapsedMs:1000,firstCorrect:true,wrong:0,hint:false,revealed:false,interrupted:false,recentExposure:false}));
  const run=appHarness(seq);run.click('data-practice-type','sequence');assert.ok(run.app.innerHTML.includes('Try a backward run'));run.click('data-action','start-suggestion');assert.equal(run.state().active.mode,'sequence-backward');assert.equal(run.state().q.position,52);assert.deepEqual(validate(run.saved()),run.saved());
 });
+
+function sequenceChartSeed() {
+ const d=emptyData(),now=50*86400000;d.settings.sequenceAnswerFormat='direct-recall';
+ for(const [i,direction,format,elapsedMs,wrong] of [[0,'sequence-forward','direct-recall',60000,1],[1,'sequence-forward','direct-recall',55000,0],[2,'sequence-backward','direct-recall',150000,1],[3,'sequence-forward','multiple-choice',40000,0]] as const){
+  const id='chart-run-'+i,at=now-4*86400000+i*3600000;
+  d.sessions.push({id,mode:direction,answerFormat:format,startedAt:at,endedAt:at+elapsedMs,duration:0,runTarget:52,startPosition:direction==='sequence-forward'?1:52,elapsedMs,completed:true});
+  for(let n=0;n<52;n++)d.attempts.push({id:id+'-'+n,sessionId:id,position:direction==='sequence-forward'?n+1:52-n,direction,answerFormat:format,at:at+n*elapsedMs/52,firstCorrect:n!==0||!wrong,wrong:n===0?wrong:0,hint:false,revealed:false,elapsedMs:elapsedMs/52,interrupted:false,recentExposure:false});
+ }
+ return d;
+}
+test('sequence chart keeps forward/backward raw and scored traces independent and shows a first backward run as points',()=>{
+ const d=sequenceChartSeed(),ui=appHarness(d);ui.click('data-view','progress');ui.click('data-stats-type','sequence');ui.click('data-stats-direction','sequence');ui.click('data-report-format','direct-recall');
+ const chart=ui.app.innerHTML.split('class="chart run-trend"')[1].split('</svg>')[0];
+ assert.ok(chart.includes('Forward · 2 runs'));assert.ok(chart.includes('Backward · 1 run'));
+ const forward=chart.match(/<g data-series-direction="sequence-forward"[^>]*>([\s\S]*?)<\/g>/)![1];
+ const backward=chart.match(/<g data-series-direction="sequence-backward"[^>]*>([\s\S]*?)<\/g>/)![1];
+ const lines=[...forward.matchAll(/<polyline[^>]*points="([^"]+)"/g)];assert.equal(lines.length,2);assert.ok(lines.every(l=>l[1].split(' ').length===2));
+ assert.equal(backward.includes('<polyline'),false);assert.equal((backward.match(/<circle/g)??[]).length,2);
+ assert.ok(forward.includes('stroke-dasharray="5 4"'));assert.ok(backward.includes('2:35.0 scored'));assert.equal(forward.includes('Backward'),false);
+ assert.ok(ui.app.innerHTML.includes('<td>2:30.0</td><td>2:35.0</td>'));assert.deepEqual(ui.saved().attempts,d.attempts);assert.deepEqual(validate(ui.saved()),ui.saved());
+ ui.click('data-stats-direction','sequence-forward');assert.equal(ui.app.innerHTML.includes('data-series-direction="sequence-backward"'),false);
+ ui.click('data-stats-direction','sequence-backward');assert.equal(ui.app.innerHTML.includes('data-series-direction="sequence-forward"'),false);
+});
+test('All formats uses separate sequence charts so multiple choice cannot connect to direct recall',()=>{
+ const ui=appHarness(sequenceChartSeed());ui.click('data-view','progress');ui.click('data-stats-type','sequence');ui.click('data-stats-direction','sequence');ui.click('data-report-format','all');
+ const charts=ui.app.innerHTML.split('class="chart run-trend"').slice(1).map((s:string)=>s.split('</svg>')[0]);assert.equal(charts.length,2);
+ assert.ok(charts[0].includes('Direct recall · 3 runs'));assert.ok(charts[1].includes('Multiple choice · 1 run'));
+ assert.equal(charts[1].includes('data-series-direction="sequence-backward"'),false);assert.equal(charts[1].includes('<polyline'),false);
+});

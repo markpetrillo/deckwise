@@ -189,3 +189,10 @@ All 21 core tests pass, including mode-specific evidence, rolling 7/30-day windo
 - Actual app-handler tests launch suggested benchmarks, confusion drills, backward runs and a complete weakest-drill/30-minute-recheck loop. They verify the new section order, manual actions, valid backups, retained raw history and Continue practice navigation. Existing input, reveal confirmation, scoring, timing, chart and data-integrity coverage remains passing.
 - Suggested next is computed locally without new stored learning state. Source scoring, review dates, eligibility and graph exclusions are unchanged. The English guide documents all recommendation thresholds; older UI preferences default safely for the optional both-direction sequence-drill scope.
 - No rendered browser check is claimed; browser automation was unavailable through the current tool set. Verification used isolated UI fixtures and did not access or alter live practice history.
+
+## Independent sequence trend series — October 27, 2026
+
+- All 157 tests pass, with TypeScript checking, production build, service-worker generation and diff checks.
+- Regression fixtures contain two forward runs followed by the first slower backward run. The chart creates independent forward/backward groups; only the forward group has connecting lines, and the backward group has separate raw/scored points. Tests also cover single-direction filters, retained scored penalties, unchanged raw history and valid backups.
+- All formats produces independent Direct recall and Multiple choice charts, each with the latest 20 qualifying runs in the report window. Direction colors, solid scored/dashed raw traces, time-axis labels and exact tables make comparisons explicit. Personal bests, scoring and saved history are unchanged.
+- No rendered browser check is claimed; isolated app-handler tests verify the actual generated chart and controls.

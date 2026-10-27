@@ -110,7 +110,7 @@ Top report accuracy is independent successes divided by eligible questions. With
 
 ## Sequence runs and records
 
-A full forward/backward sequence run covers 52 positions in order, wrapping for random starts. Scored time is active time plus five seconds for every wrong submission or reveal. Correcting later does not remove a penalty. Pauses are excluded. Only completed 52-card runs qualify for personal bests, separately by direction and answer format; focused drills and random-access benchmarks never qualify.
+A full forward/backward sequence run covers 52 positions in order, wrapping for random starts. Scored time is active time plus five seconds for every wrong submission or reveal. Correcting later does not remove a penalty. Pauses are excluded. Only completed 52-card runs qualify for personal bests, separately by direction and answer format; focused drills and random-access benchmarks never qualify. Sequence trend lines keep forward and backward runs separate on the same time scale: forward is blue and backward is purple. Scored time is solid and raw time is dashed. A direction with one run starts with isolated points, not a connection to the other direction. All formats shows separate charts for Direct recall and Multiple choice. Each chart retains the latest 20 qualifying runs within the report filters.
 
 ## Research and tuning
 
